@@ -16,8 +16,9 @@
             "es2016.array.include"
         ]
     },
-    "files": [
-        "src/index.ts"
+    "include": [
+        "src/*.ts",
+        "src/*/*.ts"
     ],
     "exclude": [
         "node_modules/*"

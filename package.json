@@ -1,8 +1,9 @@
 {
-  "name": "go-async",
+  "name": "go-routine",
   "version": "0.1.0",
   "description": "Goroutine in Node.js",
   "main": "dist/index.js",
+  "types": "src/index.ts",
   "scripts": {
     "test": "mocha"
   },
@@ -23,7 +24,12 @@
     "@types/node": "^12.12.7"
   },
   "dependencies": {
+    "@types/fs-extra": "^8.0.1",
     "@types/generic-pool": "^3.1.9",
-    "generic-pool": "^3.7.1"
+    "err2obj": "^1.1.0",
+    "fs-extra": "^8.1.0",
+    "generic-pool": "^3.7.1",
+    "sequid": "^1.0.1",
+    "tslib": "^1.10.0"
   }
 }
