@@ -1,0 +1,29 @@
+{
+  "name": "go-async",
+  "version": "0.1.0",
+  "description": "Goroutine in Node.js",
+  "main": "dist/index.js",
+  "scripts": {
+    "test": "mocha"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hyurl/go-routine.git"
+  },
+  "keywords": [
+    "goroutine"
+  ],
+  "author": "Ayon Lee <i@hyurl.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/hyurl/go-routine/issues"
+  },
+  "homepage": "https://github.com/hyurl/go-routine#readme",
+  "devDependencies": {
+    "@types/node": "^12.12.7"
+  },
+  "dependencies": {
+    "@types/generic-pool": "^3.1.9",
+    "generic-pool": "^3.7.1"
+  }
+}
