@@ -113,13 +113,13 @@ So when using this module, the following rules should be particularly aware.
 
 ```ts
 
-if (go.isMainThread) {
+if (isMainThread) {
     go.register(someFunction); // will not work
 }
 
 // or
 
-if (!go.isMainThread) {
+if (!isMainThread) {
     go.register(someFunction); // will not work
 }
 ```
@@ -129,7 +129,7 @@ Should always register for both main thread and worker threads.
 ```ts
 go.register(someFunction); // will work
 
-if (go.isMainThread) {
+if (isMainThread) {
     // ...
 }
 ```
