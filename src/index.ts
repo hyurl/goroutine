@@ -1,7 +1,7 @@
 import * as path from "path";
 import { cpus } from 'os';
 import { runInThisContext } from 'vm';
-import { existsSync, readFileSync } from 'fs';
+import { pathExists, readFile } from 'fs-extra';
 import { err2obj, obj2err } from 'err2obj';
 import sequid from "sequid";
 import hash = require("string-hash");
@@ -9,6 +9,7 @@ import decircularize = require("decircularize");
 import { Adapter, Worker } from './headers';
 import { ChildProcess } from 'child_process';
 import { Worker as ThreadWorker } from "worker_threads";
+import ChildProcessAdapter from "./adapters/child_process";
 
 
 const pool: Worker[] = [];
@@ -20,14 +21,41 @@ const tasks: {
         reject(err: Error): void;
     }
 } = {};
+
+let WorkerThreadsAdapter: Adapter = null;
 let adapter: Adapter = null;
 let port: {
     on: (event: "message", handle: (msg: any) => void) => void
 } = null;
-let isWorkerThreadsAdapter = false;
+let isGoWorker: boolean = process.argv.includes("--is-go-worker");
+let isWorkerThreadsAdapter: boolean;
 
 
-function resolveEntryFile(filename?: string): string {
+if (isGoWorker) {
+    // If `isGoWorker` is set in the first place, it indicates that using
+    // `child_process` adapter, and the current process is a worker process. 
+    port = process;
+    adapter = ChildProcessAdapter;
+} else {
+    try { // Try to load `worker_threads` module and adapter.
+        let worker_threads = require("worker_threads");
+
+        isGoWorker = !worker_threads.isMainThread;
+        WorkerThreadsAdapter = require("./adapters/worker_threads").default;
+
+        if (isGoWorker) {
+            port = worker_threads.parentPort;
+            adapter = WorkerThreadsAdapter;
+            isWorkerThreadsAdapter = true;
+        }
+    } catch (e) { }
+}
+
+
+export const isMainThread = !isGoWorker;
+
+
+async function resolveEntryFile(filename?: string): Promise<string> {
     if (filename) {
         return path.resolve(process.cwd(), filename);
     } else if (process.mainModule) {
@@ -44,7 +72,7 @@ function resolveEntryFile(filename?: string): string {
         let pwd = process.cwd();
         let file = path.resolve(pwd, "index.js");
 
-        if (existsSync(file)) {
+        if (await pathExists(file)) {
             return file;
         } else {
             let i = pwd.length;
@@ -54,8 +82,8 @@ function resolveEntryFile(filename?: string): string {
                 pwd = pwd.slice(0, i);
                 let file = path.resolve(pwd, "package.json");
 
-                if (existsSync(file)) {
-                    let data = JSON.parse(readFileSync(file, "utf8"));
+                if (await pathExists(file)) {
+                    let data = JSON.parse(await readFile(file, "utf8"));
                     return path.resolve(pwd, data["main"]);
                 } else {
                     i = pwd.lastIndexOf(path.sep);
@@ -69,8 +97,8 @@ function resolveEntryFile(filename?: string): string {
     }
 }
 
-function forkWorker(adapter: Adapter, filename: string) {
-    let worker = adapter.fork(filename);
+async function forkWorker(adapter: Adapter, filename: string) {
+    let worker = await adapter.fork(filename);
 
     pool.push(worker);
     worker.on("message", async (res: [number, Error, any]) => {
@@ -170,6 +198,12 @@ function serializable(data: any) {
     }
 }
 
+function ensureCallInMainThread(name: string) {
+    if (!isMainThread) {
+        throw new Error(`Calling ${name}() in the worker thread is not allowed`);
+    }
+}
+
 
 /**
  * Runs a function in a parallel worker thread.
@@ -178,13 +212,11 @@ function serializable(data: any) {
  *  worker thread as a plain string and regenerated, which will lose the context.
  * @param args A list of data passed to `fn` as arguments.
  */
-async function go<R, A extends any[] = any[]>(
+export async function go<R, A extends any[] = any[]>(
     fn: (...args: A) => R,
     ...args: A
 ): Promise<R extends Promise<infer U> ? U : R> {
-    if (!go.isMainThread) {
-        throw new Error("Running go function in a thread is not allowed");
-    }
+    ensureCallInMainThread("go");
 
     let uid = uids.next().value;
     let worker = pool[uid % pool.length];
@@ -197,7 +229,14 @@ async function go<R, A extends any[] = any[]>(
     }
 
     return new Promise<any>((resolve, reject) => {
-        let msg = [uid, target, hash(String(fn)), decircularize(args)];
+        let msg = [
+            uid,
+            target,
+            hash(String(fn)),
+            // Ensure the arguments are serializable and doesn't have
+            // circular references.
+            decircularize(serializable(args))
+        ];
 
         // Add the task.
         tasks[uid] = { resolve, reject };
@@ -211,25 +250,15 @@ async function go<R, A extends any[] = any[]>(
     });
 }
 
-namespace go {
-    /**
-     * Checks if the current thread is the main thread.
-     * NOTE: this variable is only available after calling `go.start()`.
-     */
-    export var isMainThread: boolean;
-
+export namespace go {
     /** Registers a function that can be used in the worker thread. */
     export function register<T extends Function>(fn: T): T {
         registry.push(fn);
         return fn;
     }
 
-    /**
-     * Starts the goroutine and forks necessary workers.
-     * This function happens immediately, once ideal, the variable
-     * `go.isMainThread` will be available.
-     */
-    export function start(options?: {
+    /** Starts the goroutine and forks necessary workers. */
+    export async function start(options?: {
         /**
          * The entry script file of the worker threads, by default, it will be
          * automatically resolved.
@@ -246,6 +275,8 @@ namespace go {
          */
         adapter?: "worker_threads" | "child_process";
     }) {
+        ensureCallInMainThread("go.start");
+
         let {
             filename,
             adapter: _adapter,
@@ -253,92 +284,87 @@ namespace go {
         } = options || {};
 
         // If `adapter` options is specified `child_process` when start up,
-        // then always use `child_process` adapter, otherwise automatically
-        // choose the ideal one from `worker_threads` and `child_process`.
+        // then always use `ChildProcessAdapter`, otherwise automatically
+        // choose the ideal one from `WorkerThreadsAdapter` and
+        // `ChildProcessAdapter`.
         if (_adapter === "child_process") {
-            port = process;
-            adapter = require("./adapters/child_process").default;
+            adapter = ChildProcessAdapter;
+        } else if (WorkerThreadsAdapter) {
+            adapter = WorkerThreadsAdapter;
+            isWorkerThreadsAdapter = true;
         } else {
-            try {
-                port = require("worker_threads").parentPort;
-                adapter = require("./adapters/worker_threads").default;
-                isWorkerThreadsAdapter = true;
-            } catch (e) {
-                port = process;
-                adapter = require("./adapters/child_process").default;
-            }
+            adapter = ChildProcessAdapter;
         }
 
-        isMainThread = adapter.isMainThread;
-
-        if (isMainThread) {
-            filename = resolveEntryFile(filename);
-
-            for (let i = 0; i < workers; i++) {
-                forkWorker(adapter, filename);
-            }
-        } else {
-            // In the worker thread, listens message from the main thread, if
-            // the message signature matches the task request, execute the task.
-            type CallMessage = [number, number | string, number, any[]];
-            port.on("message", async (msg: CallMessage) => {
-                // Check signature
-                if (!Array.isArray(msg) ||
-                    typeof msg[0] !== "number" ||
-                    typeof msg[2] !== "number" ||
-                    !Array.isArray(msg[3])) {
-                    return;
-                }
-
-                let [uid, target, id, args] = msg;
-                let fn: Function;
-
-                try {
-                    if (typeof target === "string") {
-                        // If the target is sent a string, that means an
-                        // unregistered function has been passed to the worker
-                        // thread, should try to recreate the function and use
-                        // it to handle the task.
-                        // Use `()` to wrap the code in order to let
-                        // `runInThisContext` return the result evaluated with a
-                        // function definition, 
-                        fn = runInThisContext("(" + target + ")");
-                    } else {
-                        fn = registry[target];
-
-                        // There is a slight chance that the main thread and
-                        // worker thread doesn't share the same copy of registry.
-                        // If detected, throw an error to prevent running the
-                        // malformed function.
-                        if (!fn || id !== hash(String(fn))) {
-                            throw new Error(
-                                "Goroutine registry malformed, function call " +
-                                "cannot be performed"
-                            );
-                        }
-                    }
-
-                    let result = await fn(...args);
-
-                    // Ensure the result is serializable and doesn't have
-                    // circular references.
-                    result = decircularize(serializable(result));
-
-                    adapter.send([uid, null, result]);
-                } catch (err) {
-                    // Use err2obj to convert the error so that it can be
-                    // serialized and sent through the channel.
-                    adapter.send([uid, err2obj(err), null]);
-                }
-            });
-        }
+        filename = await resolveEntryFile(filename);
+        await Promise.all(
+            new Array(workers).fill(forkWorker(adapter, filename))
+        );
     }
 
     /** Terminates all worker threads. */
     export async function terminate() {
+        ensureCallInMainThread("go.terminate");
         await Promise.all(pool.map(adapter.terminate));
     }
 }
 
 
 export default go;
+
+
+if (!isMainThread) {
+    // In the worker thread, listens message from the main thread, if
+    // the message signature matches the task request, execute the task.
+    type CallMessage = [number, number | string, number, any[]];
+    port.on("message", async (msg: CallMessage) => {
+        // Check signature
+        if (!Array.isArray(msg) ||
+            typeof msg[0] !== "number" ||
+            typeof msg[2] !== "number" ||
+            !Array.isArray(msg[3])) {
+            return;
+        }
+
+        let [uid, target, id, args] = msg;
+        let fn: Function;
+
+        try {
+            if (typeof target === "string") {
+                // If the target is sent a string, that means an
+                // unregistered function has been passed to the worker
+                // thread, should try to recreate the function and use
+                // it to handle the task.
+                // Use `()` to wrap the code in order to let
+                // `runInThisContext` return the result evaluated with a
+                // function definition, 
+                fn = runInThisContext("(" + target + ")");
+            } else {
+                fn = registry[target];
+
+                // There is a slight chance that the main thread and
+                // worker thread doesn't share the same copy of registry.
+                // If detected, throw an error to prevent running the
+                // malformed function.
+                if (!fn || id !== hash(String(fn))) {
+                    throw new Error(
+                        "Goroutine registry malformed, function call " +
+                        "cannot be performed"
+                    );
+                }
+            }
+
+            let result = await fn(...args);
+
+            // Ensure the result is serializable and doesn't have
+            // circular references.
+            result = decircularize(serializable(result));
+
+            adapter.send([uid, null, result]);
+        } catch (err) {
+            // Use err2obj to convert the error so that it can be
+            // serialized and sent through the channel.
+            adapter.send([uid, err2obj(err), null]);
+        }
+    });
+}

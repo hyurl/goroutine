@@ -1,12 +1,8 @@
-/* global describe, it, after */
-const go = require(".").default;
+/* global describe, it, before, after */
+require("source-map-support/register");
+const { go, isMainThread } = require(".");
 const fs = require("fs");
 const assert = require("assert");
-
-go.start({
-    filename: __filename,
-    workers: 1
-});
 
 go.register(sum);
 /**
@@ -32,14 +28,22 @@ let throwError = go.register(() => {
     throw new Error("Something went wrong");
 });
 
-if (go.isMainThread) {
-    after(() => {
-        return go.terminate();
-    });
-
-    let greeting = go.register(() => "Hello, World!");
-
+if (isMainThread) {
     describe("Goroutine", () => {
+        before(() => {
+            return go.start({
+                filename: __filename,
+                workers: 1,
+                // adapter: "child_process"
+            });
+        });
+
+        after(() => {
+            return go.terminate();
+        });
+
+        let greeting = go.register(() => "Hello, World!");
+
         it("should call a registered function", () => {
             return go(sum, 12, 13).then(result => {
                 assert.strictEqual(result, 25);

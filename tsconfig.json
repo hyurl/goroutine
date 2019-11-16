@@ -1,7 +1,7 @@
 {
     "compilerOptions": {
         "module": "commonjs",
-        "target": "es2015",
+        "target": "es2017",
         "preserveConstEnums": true,
         "rootDir": "src/",
         "outDir": "dist/",
@@ -10,11 +10,7 @@
         "sourceMap": true,
         "noUnusedLocals": true,
         "importHelpers": true,
-        "experimentalDecorators": true,
-        "lib": [
-            "es2015",
-            "es2016.array.include"
-        ]
+        "experimentalDecorators": true
     },
     "include": [
         "src/*.ts",

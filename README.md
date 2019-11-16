@@ -5,8 +5,8 @@
 *Inspired by Goroutine in GO programming language and the Swoole implementation*
 *in PHP programming language.*
 
-*Backward capability is supported via `child_process` module, even for Node.js*
-*v6.0, goroutine will work well.*
+*Backward capability is supported via `child_process` module, any Node.js higher*
+*than v8.3, goroutine will work well.*
 
 ## Install
 
@@ -17,7 +17,7 @@ npm i go-routine
 ## Example
 
 ```ts
-import go from "go-routine"; // or const go = require("go-routine").default
+import go, { isMainThread } from "go-routine"; // or const go = require("go-routine").default
 import * as marked from "marked"; // a module to transfer Markdown to HTML
 
 go.register(markdown2html);
@@ -25,10 +25,10 @@ function markdown2html(md: string) {
     return marked(md, { /* config */ });
 }
 
-go.start();
-
-if (go.isMainThread) {
+if (isMainThread) {
     (async () => {
+        await go.start();
+
         let html = await go(markdown2html, "<a markdown document>");
         // ...
 
@@ -73,20 +73,10 @@ declare async function go<R, A extends any[] = any[]>(
 ): Promise<R extends Promise<infer U> ? U : R>;
 
 namespace go {
-    /**
-     * Checks if the current thread is the main thread.
-     * NOTE: this variable is only available after calling `go.start()`.
-     */
-    var isMainThread: boolean;
-
     /** Registers a function that can be used in the worker thread. */
     function register<T extends Function>(fn: T): T;
 
-    /**
-     * Starts the goroutine and forks necessary workers.
-     * This function happens immediately, once ideal, the variable
-     * `go.isMainThread` will be available.
-     */
+    /** Starts the goroutine and forks necessary workers. */
     function start(options?: {
         /**
          * The entry script file of the worker threads, by default, it will be
@@ -103,7 +93,7 @@ namespace go {
          * fallback to `child_process` if not supported.
          */
         adapter?: "worker_threads" | "child_process";
-    }): void;
+    }): Promise<void>;
 
     /** Terminates all worker threads. */
     function terminate(): Promise<void>;
@@ -112,9 +102,9 @@ namespace go {
 
 ## Limitations
 
-Apparently there are some limits in this module, since neither `worker_threads`
-nor `child_process` in Node.js shares address space between the main thread and
-the workers.
+Apparently there are some limitations in this module, since neither
+`worker_threads` nor `child_process` in Node.js shares address space between the
+main thread and the workers.
 
 So when using this module, the following rules should be particularly aware.
 
@@ -144,19 +134,27 @@ if (go.isMainThread) {
 }
 ```
 
-2. `go.start()` should, as well, be called in both main thread and worker
-    threads. BUT `go()` function should only be called in the main thread.
-    Calling `go.terminate()` in the worker thread will have no effect.
-
-3. The data passed to the function or returned by the function must be
+2. The data passed to the function or returned by the function must be
     serializable. If the `worker_threads` adapter is used (by default), then the
     [HTML structured clone algorithm](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm)
     will be used to clone data. If `child_process` adapter is used, then JSON is
     used to serialize data. Those properties that cannot be serialized will be
     lost during transmission.
 
-4. Worker threads are only meant to run CPU intensive code, they will not do any
+3. Worker threads are only meant to run CPU intensive code, they will not do any
     help for I/O intensive work. Being said so, it is still danger to block the
     worker thread for too long, this module doesn't have the ability to detect
     if a thread is hanged and fork more threads, all tasks are delivered to the
     threads using the round-robin method.
+
+## A Little Tips
+
+Currently, VS Code doesn't have the ability to debug worker threads, if
+debugging is necessary in development, try switching the adapter to
+`child_process`, and only use `worker_threads` when deploying, but be aware the
+different serialization algorithms between them.
+
+If however you're using WebStorm, congratulations, that it does support worker
+threads debugging, please
+[check this article](https://blog.jetbrains.com/webstorm/2018/10/webstorm-2018-3-eap-6/)
+for more details.
