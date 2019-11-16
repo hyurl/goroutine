@@ -244,7 +244,7 @@ namespace go {
          * By default, use `worker_threads` in the supported Node.js version and
          * fallback to `child_process` if not supported.
          */
-        adapter: "worker_threads" | "child_process";
+        adapter?: "worker_threads" | "child_process";
     }) {
         let {
             filename,
