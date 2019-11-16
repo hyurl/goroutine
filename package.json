@@ -1,17 +1,18 @@
 {
   "name": "go-routine",
-  "version": "0.1.0",
-  "description": "Goroutine in Node.js",
+  "version": "1.0.0",
+  "description": "Runs a function in a parallel worker thread.",
   "main": "dist/index.js",
   "types": "src/index.ts",
   "scripts": {
-    "test": "mocha"
+    "test": "npx mocha test.js"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/hyurl/go-routine.git"
   },
   "keywords": [
+    "go",
     "goroutine"
   ],
   "author": "Ayon Lee <i@hyurl.com>",
@@ -21,15 +22,15 @@
   },
   "homepage": "https://github.com/hyurl/go-routine#readme",
   "devDependencies": {
-    "@types/node": "^12.12.7"
+    "@types/node": "^12.12.7",
+    "@types/string-hash": "^1.1.1",
+    "mocha": "^6.2.2"
   },
   "dependencies": {
-    "@types/fs-extra": "^8.0.1",
-    "@types/generic-pool": "^3.1.9",
+    "decircularize": "^1.0.0",
     "err2obj": "^1.1.0",
-    "fs-extra": "^8.1.0",
-    "generic-pool": "^3.7.1",
     "sequid": "^1.0.1",
+    "string-hash": "^1.1.3",
     "tslib": "^1.10.0"
   }
 }

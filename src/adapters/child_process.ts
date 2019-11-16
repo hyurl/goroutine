@@ -4,7 +4,7 @@ import { Adapter } from "../headers";
 export default <Adapter>{
     isMainThread: !process.argv.includes("--isWorkerThread"),
     fork(filename: string) {
-        return fork(filename, ["--isWorkerThread"]);
+        return fork(filename, [...process.argv.slice(2), "--isWorkerThread"]);
     },
     async terminate(worker: ChildProcess) {
         worker.kill();
