@@ -110,30 +110,64 @@ function forkWorker(adapter: Adapter, filename: string) {
     });
 }
 
-function removeFunctions(obj: any) {
-    if (typeof obj === "object") {
-        if (Array.isArray(obj)) {
-            for (let i = 0; i < obj.length; ++i) {
-                if (typeof obj[i] === "function") {
-                    obj[i] = null;
-                } else {
-                    obj[i] = removeFunctions(obj[i]);
+/**
+ * NOTE: This function now only supports primitives and simple objects.
+ */
+function serializable(data: any) {
+    let type = typeof data;
+
+    if (data === undefined || data === null ||
+        type === "function" || type === "symbol" ||
+        (type === "bigint" && !isWorkerThreadsAdapter)) {
+        return void 0;
+    } else if (type === "object") {
+        if (data instanceof Map) {
+            let map = new Map();
+
+            for (let [key, value] of data) {
+                key = serializable(key);
+
+                // Skip the items that the key resolves to void.
+                if (key !== undefined) {
+                    map.set(key, serializable(value));
                 }
             }
+
+            return map;
+        } else if (data instanceof Set) {
+            let set = new Set();
+
+            for (let value of data) {
+                set.add(serializable(value));
+            }
+
+            return set;
+        } else if (Array.isArray(data)) {
+            let arr = [];
+
+            for (let i = 0; i < data.length; ++i) {
+                arr.push(serializable(data[i]));
+            }
+
+            return arr;
         } else {
-            for (let key in obj) {
-                if (obj.hasOwnProperty(key)) { // Only care about own properties.
-                    if (typeof obj[key] === "function") {
-                        delete obj[key];
-                    } else {
-                        obj[key] = removeFunctions(obj[key]);
+            for (let key in data) {
+                // Only care about own properties.
+                if (data.hasOwnProperty(key)) {
+                    let value = serializable(data[key]);
+
+                    // If the value resolved to void, simply delete the property.
+                    if (value === undefined) {
+                        delete data[key];
                     }
                 }
             }
-        }
-    }
 
-    return obj;
+            return data;
+        }
+    } else {
+        return data;
+    }
 }
 
 
@@ -180,7 +214,7 @@ async function go<R, A extends any[] = any[]>(
 namespace go {
     /**
      * Checks if the current thread is the main thread.
-     * NOTE: this variable is only available after called `go.start()`.
+     * NOTE: this variable is only available after calling `go.start()`.
      */
     export var isMainThread: boolean;
 
@@ -284,16 +318,11 @@ namespace go {
                         }
                     }
 
-                    // Must decircularize the result in order to be transferred.
-                    let result = decircularize(await fn(...args));
+                    let result = await fn(...args);
 
-                    if (isWorkerThreadsAdapter) {
-                        // Functions are not supported by the HTML structured
-                        // clone algorithm, in order to transfer data and don't
-                        // raise `DATA_CLONE_ERR` exception, functions must be
-                        // removed.
-                        result = removeFunctions(result);
-                    }
+                    // Ensure the result is serializable and doesn't have
+                    // circular references.
+                    result = decircularize(serializable(result));
 
                     adapter.send([uid, null, result]);
                 } catch (err) {

@@ -52,7 +52,7 @@ that function. This is the trick, simple, but it gets things done. When calling
 And since this registry is shared between the main thread and the worker thread,
 when calling `go(markdown2html)`, the main thread only sends the index of the
 function to the worker thread, and let itself to find the function from the
-registry, than call the function with additional arguments.
+registry, then call the function with additional arguments.
 
 ## API
 
@@ -75,7 +75,7 @@ declare async function go<R, A extends any[] = any[]>(
 namespace go {
     /**
      * Checks if the current thread is the main thread.
-     * NOTE: this variable is only available after called `go.start()`.
+     * NOTE: this variable is only available after calling `go.start()`.
      */
     var isMainThread: boolean;
 
@@ -124,36 +124,39 @@ So when using this module, the following rules should be particularly aware.
 ```ts
 
 if (go.isMainThread) {
-    go.register(someFunction);
+    go.register(someFunction); // will not work
 }
 
 // or
 
 if (!go.isMainThread) {
-    go.register(someFunction);
+    go.register(someFunction); // will not work
 }
+```
 
-// should always register for both main thread and worker threads.
-go.register(someFunction)
+Should always register for both main thread and worker threads.
+
+```ts
+go.register(someFunction); // will work
 
 if (go.isMainThread) {
     // ...
 }
 ```
 
-2. The data passed to the function or returned by the function must be
-    serializable. If the `worker_threads` adapter is used (by default), then the
-    [HTML structured clone algorithm](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm)
-    will be used to clone data. If `child_process` adapter is used, then JSON is
-    used to serialized data. Those properties that cannot be serialized will be
-    lost during transmission.
-
-3. `go.start()` should, as well, be called in both main thread and worker
+2. `go.start()` should, as well, be called in both main thread and worker
     threads. BUT `go()` function should only be called in the main thread.
     Calling `go.terminate()` in the worker thread will have no effect.
 
+3. The data passed to the function or returned by the function must be
+    serializable. If the `worker_threads` adapter is used (by default), then the
+    [HTML structured clone algorithm](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm)
+    will be used to clone data. If `child_process` adapter is used, then JSON is
+    used to serialize data. Those properties that cannot be serialized will be
+    lost during transmission.
+
 4. Worker threads are only meant to run CPU intensive code, they will not do any
     help for I/O intensive work. Being said so, it is still danger to block the
-    worker threads for too long, this module doesn't have the ability to detect
+    worker thread for too long, this module doesn't have the ability to detect
     if a thread is hanged and fork more threads, all tasks are delivered to the
     threads using the round-robin method.
