@@ -29,7 +29,7 @@ if (isMainThread) {
     (async () => {
         await go.start();
 
-        let html = await go(markdown2html, "<a markdown document>");
+        let html = await go(markdown2html, "a markdown document...");
         // ...
 
         await go.terminate()
