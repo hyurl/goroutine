@@ -21,7 +21,10 @@ async function patchDebugArgv(argv: string[]) {
 
 export default <Adapter>{
     async fork(filename: string) {
-        return fork(filename, ["--is-go-worker"], {
+        return fork(filename, [
+            ...process.argv.slice(2),
+            "--is-go-worker"
+        ], {
             execArgv: await patchDebugArgv(process.execArgv)
         });
     },
