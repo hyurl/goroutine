@@ -3,6 +3,9 @@ require("source-map-support/register");
 const { go, isMainThread } = require(".");
 const fs = require("fs");
 const assert = require("assert");
+const FRON = require("fron");
+
+go.register(FRON.parseToken);
 
 go.register(sum);
 /**
@@ -66,6 +69,21 @@ if (isMainThread) {
             return go((a, b) => Promise.resolve(a * b), 10, 10).then(result => {
                 assert.strictEqual(result, 100);
             });
+        });
+
+        it("should parse FRON token in the worker thread", async () => {
+            let token = await go(FRON.parseToken, `
+            {
+                name: "foo test",
+                foo: {
+                    circular: $
+                },
+                bar: { hello: "world" }
+            }
+            `);
+            let data = FRON.composeToken(token);
+
+            assert.deepStrictEqual(data, data["foo"]["circular"]);
         });
 
         it("should throw error", () => {

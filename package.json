@@ -24,6 +24,7 @@
   "devDependencies": {
     "@types/node": "^12.12.7",
     "@types/string-hash": "^1.1.1",
+    "fron": "^0.2.0",
     "mocha": "^6.2.2",
     "source-map-support": "^0.5.16"
   },

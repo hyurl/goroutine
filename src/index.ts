@@ -235,7 +235,7 @@ export async function go<R, A extends any[] = any[]>(
             hash(String(fn)),
             // Ensure the arguments are serializable and doesn't have
             // circular references.
-            decircularize(serializable(args))
+            serializable(decircularize(args))
         ];
 
         // Add the task.
@@ -358,13 +358,15 @@ if (!isMainThread) {
 
             // Ensure the result is serializable and doesn't have
             // circular references.
-            result = decircularize(serializable(result));
+            result = serializable(decircularize(result));
 
             adapter.send([uid, null, result]);
         } catch (err) {
             // Use err2obj to convert the error so that it can be
             // serialized and sent through the channel.
-            adapter.send([uid, err2obj(err), null]);
+            // Since err2obj already calls decircularize() internally, here only
+            // need to call serializable() on it.
+            adapter.send([uid, serializable(err2obj(err)), null]);
         }
     });
 }
