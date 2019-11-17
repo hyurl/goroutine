@@ -283,6 +283,10 @@ export namespace go {
             workers = cpus().length,
         } = options || {};
 
+        if (workers < 1) {
+            throw new RangeError("'workers' option must not be smaller than 1");
+        }
+
         // If `adapter` options is specified `child_process` when start up,
         // then always use `ChildProcessAdapter`, otherwise automatically
         // choose the ideal one from `WorkerThreadsAdapter` and
