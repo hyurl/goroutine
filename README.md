@@ -58,12 +58,24 @@ registry, then call the function with additional arguments.
 
 ## API
 
-There are very few functions of this module, all you've seen from the above
-example. But it would be more polite to list out all the details.
+There are very few functions of this module, many of them you've seen from the
+above example. But it would be more polite to list out all the details.
 
 ```ts
+/**
+ * Whether the current the thread is the main thread.
+ */
 const isMainThread: boolean;
+/**
+ * An interger represents the current thread id, in the main thread, it will
+ * always be `0`.
+ */
 const threadId: number;
+/**
+ * An arbitrary JavaScript value passed to the worker, in the main thread, it
+ * will always be `null`.
+ */
+const workerData: any;
 
 /**
  * Runs a function in a parallel worker thread.
@@ -103,6 +115,8 @@ namespace go {
          * workers.
          */
         execArgv?: string[];
+        /** An arbitrary JavaScript value passed to the worker. */
+        workerData?: any;
     }): Promise<void>;
 
     /** Terminates all worker threads. */

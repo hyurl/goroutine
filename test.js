@@ -1,6 +1,6 @@
 /* global describe, it, before, after */
 require("source-map-support/register");
-const { go, isMainThread, threadId } = require(".");
+const { go, isMainThread, threadId, workerData } = require(".");
 const fs = require("fs");
 const assert = require("assert");
 const FRON = require("fron");
@@ -31,6 +31,7 @@ let throwError = go.register(() => {
     throw new Error("Something went wrong");
 });
 let getThreadId = go.register(() => threadId);
+let getWorkerData = go.register(() => workerData);
 
 if (isMainThread) {
     describe("Goroutine", () => {
@@ -38,6 +39,7 @@ if (isMainThread) {
             await go.start({
                 filename: __filename,
                 workers: 1,
+                workerData: { foo: "hello", bar: "world" },
                 // adapter: "child_process"
             });
         });
@@ -55,6 +57,15 @@ if (isMainThread) {
         it("worker threadId should be 1", async () => {
             let id = await go(getThreadId);
             assert.strictEqual(id, 1);
+        });
+
+        it("workerData in main thread should be null", async () => {
+            assert.strictEqual(workerData, null);
+        });
+
+        it("should pass workerData as expected", async () => {
+            let data = await go(getWorkerData);
+            assert.deepStrictEqual(data, { foo: "hello", bar: "world" });
         });
 
         it("should call a registered function", async () => {

@@ -32,6 +32,7 @@ let isWorkerThreadsAdapter: boolean;
 let argv = parseArgv(process.argv.slice(2));
 let isWorker: boolean = argv["go-worker"] === "true";
 let workerId: number = Number(argv["worker-id"] || 0);
+let _workerData: any = argv["worker-data"];
 
 
 if (isWorker) {
@@ -39,12 +40,17 @@ if (isWorker) {
     // `child_process` adapter, and the current process is a worker process. 
     port = process;
     adapter = ChildProcessAdapter;
+
+    if (_workerData !== undefined) {
+        _workerData = JSON.parse(_workerData);
+    }
 } else {
     try { // Try to load `worker_threads` module and adapter.
         let worker_threads = require("worker_threads");
 
         isWorker = !worker_threads.isMainThread;
         workerId = worker_threads.threadId;
+        _workerData = worker_threads.workerData;
         WorkerThreadsAdapter = require("./adapters/worker_threads").default;
 
         if (isWorker) {
@@ -56,8 +62,20 @@ if (isWorker) {
 }
 
 
+/**
+ * Whether the current the thread is the main thread.
+ */
 export const isMainThread = !isWorker;
+/**
+ * An interger represents the current thread id, in the main thread, it will
+ * always be `0`.
+ */
 export const threadId = workerId;
+/**
+ * An arbitrary JavaScript value passed to the worker, in the main thread, it
+ * will always be `null`.
+ */
+export const workerData = _workerData || null;
 
 
 async function resolveEntryFile(filename?: string): Promise<string> {
@@ -102,9 +120,11 @@ async function resolveEntryFile(filename?: string): Promise<string> {
     }
 }
 
-async function forkWorker(adapter: Adapter, filename: string, options?: {
-    execArgv?: string[]
-}) {
+async function forkWorker(
+    adapter: Adapter,
+    ...args: Parameters<Adapter["fork"]>
+) {
+    let [filename, options] = args;
     let worker = await adapter.fork(filename, options);
 
     pool.push(worker);
@@ -286,6 +306,8 @@ export namespace go {
          * workers.
          */
         execArgv?: string[];
+        /** An arbitrary JavaScript value passed to the worker. */
+        workerData?: any;
     }) {
         ensureCallInMainThread("go.start");
 
@@ -293,7 +315,8 @@ export namespace go {
             filename = void 0,
             adapter: _adapter = void 0,
             workers = cpus().length,
-            execArgv = []
+            execArgv = [],
+            workerData = null
         } = options || {};
 
         if (workers < 1) {
@@ -315,7 +338,10 @@ export namespace go {
 
         filename = await resolveEntryFile(filename);
         await Promise.all(
-            new Array(workers).fill(forkWorker(adapter, filename, { execArgv }))
+            new Array(workers).fill(forkWorker(adapter, filename, {
+                execArgv,
+                workerData: serializable(decircularize(workerData))
+            }))
         );
     }
 

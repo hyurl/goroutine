@@ -23,13 +23,22 @@ async function patchDebugArgv(argv: string[]) {
 }
 
 export default <Adapter>{
-    async fork(filename: string, options?: { execArgv?: string[] }) {
-        let { execArgv = [] } = options;
-        return fork(filename, [
+    async fork(filename: string, options?: {
+        execArgv?: string[];
+        workerData?: any;
+    }) {
+        let { execArgv = [], workerData } = options;
+        let argv = [
             ...process.argv.slice(2),
             "--go-worker=true",
             `--worker-id=${uids.next().value}`
-        ], {
+        ];
+
+        if (workerData) {
+            argv.push(`--worker-data=${JSON.stringify(workerData)}`);
+        }
+
+        return fork(filename, argv, {
             execArgv: [
                 ...(await patchDebugArgv(process.execArgv)),
                 ...execArgv
