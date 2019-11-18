@@ -1,6 +1,9 @@
 import { fork, ChildProcess } from "child_process";
 import { Adapter } from "../headers";
 import getPort = require("get-port");
+import sequid from "sequid";
+
+const uids = sequid();
 
 async function patchDebugArgv(argv: string[]) {
     for (let i = 0; i < argv.length; ++i) {
@@ -24,7 +27,8 @@ export default <Adapter>{
         let { execArgv = [] } = options;
         return fork(filename, [
             ...process.argv.slice(2),
-            "--is-go-worker"
+            "--go-worker=true",
+            `--worker-id=${uids.next().value}`
         ], {
             execArgv: [
                 ...(await patchDebugArgv(process.execArgv)),

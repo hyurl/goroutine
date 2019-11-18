@@ -17,13 +17,15 @@ npm i go-routine
 ## Example
 
 ```ts
-import go, { isMainThread } from "go-routine"; // or const go = require("go-routine").default
-import * as marked from "marked"; // a module to transfer Markdown to HTML
+import go, { isMainThread, threadId } from "go-routine";
+import * as marked from "marked"; // A module to transfer Markdown to HTML
 
 go.register(markdown2html);
 function markdown2html(md: string) {
     return marked(md, { /* config */ });
 }
+
+console.log(threadId); // If is the main thread, will always be 0
 
 if (isMainThread) {
     (async () => {
@@ -60,6 +62,9 @@ There are very few functions of this module, all you've seen from the above
 example. But it would be more polite to list out all the details.
 
 ```ts
+const isMainThread: boolean;
+const threadId: number;
+
 /**
  * Runs a function in a parallel worker thread.
  * @param fn If the function is registered via `go.register()`, then it can be

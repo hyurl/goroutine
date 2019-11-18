@@ -10,6 +10,7 @@ import { Adapter, Worker } from './headers';
 import { ChildProcess } from 'child_process';
 import { Worker as ThreadWorker } from "worker_threads";
 import ChildProcessAdapter from "./adapters/child_process";
+import parseArgv = require("minimist");
 
 
 const pool: Worker[] = [];
@@ -27,11 +28,13 @@ let adapter: Adapter = null;
 let port: {
     on: (event: "message", handle: (msg: any) => void) => void
 } = null;
-let isGoWorker: boolean = process.argv.includes("--is-go-worker");
 let isWorkerThreadsAdapter: boolean;
+let argv = parseArgv(process.argv.slice(2));
+let isWorker: boolean = argv["go-worker"] === "true";
+let workerId: number = Number(argv["worker-id"] || 0);
 
 
-if (isGoWorker) {
+if (isWorker) {
     // If `isGoWorker` is set in the first place, it indicates that using
     // `child_process` adapter, and the current process is a worker process. 
     port = process;
@@ -40,10 +43,11 @@ if (isGoWorker) {
     try { // Try to load `worker_threads` module and adapter.
         let worker_threads = require("worker_threads");
 
-        isGoWorker = !worker_threads.isMainThread;
+        isWorker = !worker_threads.isMainThread;
+        workerId = worker_threads.threadId;
         WorkerThreadsAdapter = require("./adapters/worker_threads").default;
 
-        if (isGoWorker) {
+        if (isWorker) {
             port = worker_threads.parentPort;
             adapter = WorkerThreadsAdapter;
             isWorkerThreadsAdapter = true;
@@ -52,7 +56,8 @@ if (isGoWorker) {
 }
 
 
-export const isMainThread = !isGoWorker;
+export const isMainThread = !isWorker;
+export const threadId = workerId;
 
 
 async function resolveEntryFile(filename?: string): Promise<string> {

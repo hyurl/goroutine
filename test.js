@@ -1,6 +1,6 @@
 /* global describe, it, before, after */
 require("source-map-support/register");
-const { go, isMainThread } = require(".");
+const { go, isMainThread, threadId } = require(".");
 const fs = require("fs");
 const assert = require("assert");
 const FRON = require("fron");
@@ -30,6 +30,7 @@ function exists(file) {
 let throwError = go.register(() => {
     throw new Error("Something went wrong");
 });
+let getThreadId = go.register(() => threadId);
 
 if (isMainThread) {
     describe("Goroutine", () => {
@@ -46,6 +47,15 @@ if (isMainThread) {
         });
 
         let greeting = go.register(() => "Hello, World!");
+
+        it("main threadId should be 0", async () => {
+            assert.strictEqual(threadId, 0);
+        });
+
+        it("worker threadId should be 1", async () => {
+            let id = await go(getThreadId);
+            assert.strictEqual(id, 1);
+        });
 
         it("should call a registered function", () => {
             return go(sum, 12, 13).then(result => {
