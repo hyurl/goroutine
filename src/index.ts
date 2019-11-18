@@ -36,7 +36,7 @@ let _workerData: any = argv["worker-data"];
 
 
 if (isWorker) {
-    // If `isGoWorker` is set in the first place, it indicates that using
+    // If `isWorker` is set in the first place, it indicates that using
     // `child_process` adapter, and the current process is a worker process. 
     port = process;
     adapter = ChildProcessAdapter;
