@@ -111,12 +111,28 @@ namespace go {
          */
         adapter?: "worker_threads" | "child_process";
         /**
-         * List of string arguments appended to `process.execArgv` when fork
-         * workers.
+         * List of node CLI options passed to the worker. By default, options
+         * will be inherited from the parent thread.
          */
         execArgv?: string[];
         /** An arbitrary JavaScript value passed to the worker. */
         workerData?: any;
+        /**
+         * If this is set to `true`, then `worker.stdin` will provide a writable
+         * stream whose contents will appear as `process.stdin` inside the
+         * Worker. By default, no data is provided.
+         */
+        stdin?: boolean;
+        /**
+         * If this is set to `true`, then `worker.stdout` will not automatically
+         * be piped through to `process.stdout` in the parent.
+         */
+        stdout?: boolean;
+        /**
+         * If this is set to `true`, then `worker.stderr` will not automatically
+         * be piped through to `process.stderr` in the parent.
+         */
+        stderr?: boolean;
     }): Promise<void>;
 
     /** Terminates all worker threads. */

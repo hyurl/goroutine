@@ -1,47 +1,57 @@
 import { fork, ChildProcess } from "child_process";
 import { Adapter } from "../headers";
 import getPort = require("get-port");
+import parseArgv = require("minimist");
 import sequid from "sequid";
 
 const uids = sequid();
+const argv = parseArgv(process.execArgv);
+const debugFlag = ["inspect-brk", "inspect", "debug"].find(flag => !!argv[flag]);
 
-async function patchDebugArgv(argv: string[]) {
-    for (let i = 0; i < argv.length; ++i) {
-        if (argv[i].startsWith("--inspect-brk")) {
-            argv[i] = "--inspect-brk=" + await getPort();
-            break;
-        } else if (argv[i].startsWith("--inspect")) {
-            argv[i] = "--inspect=" + await getPort();
-            break;
-        } else if (argv[i].startsWith("--debug")) {
-            argv[i] = "--debug=" + await getPort();
-            break;
-        }
+async function getDebugFlag() {
+    if (debugFlag) {
+        // Fix debug port conflict with parent process.
+        return `--${debugFlag}=${await getPort()}`;
     }
-
-    return argv;
 }
 
 export default <Adapter>{
-    async fork(filename: string, options?: {
+    async fork(filename: string, options: {
         execArgv?: string[];
         workerData?: any;
+        stdin?: boolean;
+        stdout?: boolean;
+        stderr?: boolean;
     }) {
-        let { execArgv = [], workerData } = options;
+        let {
+            execArgv = process.execArgv,
+            workerData,
+            stdin,
+            stdout,
+            stderr
+        } = options;
         let argv = [
             ...process.argv.slice(2),
             "--go-worker=true",
             `--worker-id=${uids.next().value}`
         ];
+        let debugArgv = await getDebugFlag();
 
         if (workerData) {
             argv.push(`--worker-data=${JSON.stringify(workerData)}`);
         }
 
+        if (debugArgv) {
+            execArgv.push(debugArgv);
+        }
+
         return fork(filename, argv, {
-            execArgv: [
-                ...(await patchDebugArgv(process.execArgv)),
-                ...execArgv
+            execArgv,
+            stdio: [
+                stdin ? "pipe" : "inherit",
+                stdout ? "pipe" : "inherit",
+                stderr ? "pipe" : "inherit",
+                "ipc"
             ]
         });
     },

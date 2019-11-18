@@ -2,14 +2,17 @@ import { Worker, parentPort } from "worker_threads";
 import { Adapter } from "../headers";
 
 export default <Adapter>{
-    async fork(filename: string, options?: {
+    async fork(filename: string, options: {
         execArgv?: string[];
         workerData?: any;
+        stdin?: boolean;
+        stdout?: boolean;
+        stderr?: boolean;
     }) {
-        let { execArgv = [], workerData } = options;
+        let { execArgv = process.execArgv, ...extra } = options;
         return new Worker(filename, {
-            execArgv: [...process.execArgv, ...execArgv],
-            workerData
+            execArgv,
+            ...extra
         });
     },
     async terminate(worker: Worker) {
