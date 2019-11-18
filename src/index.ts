@@ -160,7 +160,7 @@ async function forkWorker(
         // the old one.
         if (((code === null && signal === "SIGTERM") ||
             (code === 1 && signal === undefined)) === false) {
-            forkWorker(adapter, filename);
+            forkWorker(adapter, filename, options);
         }
     });
 }
