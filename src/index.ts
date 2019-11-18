@@ -278,8 +278,8 @@ export namespace go {
         ensureCallInMainThread("go.start");
 
         let {
-            filename,
-            adapter: _adapter,
+            filename = void 0,
+            adapter: _adapter = void 0,
             workers = cpus().length,
         } = options || {};
 
