@@ -93,6 +93,11 @@ namespace go {
          * fallback to `child_process` if not supported.
          */
         adapter?: "worker_threads" | "child_process";
+        /**
+         * List of string arguments appended to `process.execArgv` when fork
+         * workers.
+         */
+        execArgv?: string[];
     }): Promise<void>;
 
     /** Terminates all worker threads. */

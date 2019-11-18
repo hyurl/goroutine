@@ -20,12 +20,16 @@ async function patchDebugArgv(argv: string[]) {
 }
 
 export default <Adapter>{
-    async fork(filename: string) {
+    async fork(filename: string, options?: { execArgv?: string[] }) {
+        let { execArgv = [] } = options;
         return fork(filename, [
             ...process.argv.slice(2),
             "--is-go-worker"
         ], {
-            execArgv: await patchDebugArgv(process.execArgv)
+            execArgv: [
+                ...(await patchDebugArgv(process.execArgv)),
+                ...execArgv
+            ]
         });
     },
     async terminate(worker: ChildProcess) {

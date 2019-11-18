@@ -97,8 +97,10 @@ async function resolveEntryFile(filename?: string): Promise<string> {
     }
 }
 
-async function forkWorker(adapter: Adapter, filename: string) {
-    let worker = await adapter.fork(filename);
+async function forkWorker(adapter: Adapter, filename: string, options?: {
+    execArgv?: string[]
+}) {
+    let worker = await adapter.fork(filename, options);
 
     pool.push(worker);
     worker.on("message", async (res: [number, Error, any]) => {
@@ -274,6 +276,11 @@ export namespace go {
          * fallback to `child_process` if not supported.
          */
         adapter?: "worker_threads" | "child_process";
+        /**
+         * List of string arguments appended to `process.execArgv` when fork
+         * workers.
+         */
+        execArgv?: string[];
     }) {
         ensureCallInMainThread("go.start");
 
@@ -281,6 +288,7 @@ export namespace go {
             filename = void 0,
             adapter: _adapter = void 0,
             workers = cpus().length,
+            execArgv = []
         } = options || {};
 
         if (workers < 1) {
@@ -302,7 +310,7 @@ export namespace go {
 
         filename = await resolveEntryFile(filename);
         await Promise.all(
-            new Array(workers).fill(forkWorker(adapter, filename))
+            new Array(workers).fill(forkWorker(adapter, filename, { execArgv }))
         );
     }
 
