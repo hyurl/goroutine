@@ -34,16 +34,16 @@ let getThreadId = go.register(() => threadId);
 
 if (isMainThread) {
     describe("Goroutine", () => {
-        before(() => {
-            return go.start({
+        before(async () => {
+            await go.start({
                 filename: __filename,
                 workers: 1,
                 // adapter: "child_process"
             });
         });
 
-        after(() => {
-            return go.terminate();
+        after(async () => {
+            await go.terminate();
         });
 
         let greeting = go.register(() => "Hello, World!");
@@ -57,28 +57,24 @@ if (isMainThread) {
             assert.strictEqual(id, 1);
         });
 
-        it("should call a registered function", () => {
-            return go(sum, 12, 13).then(result => {
-                assert.strictEqual(result, 25);
-            });
+        it("should call a registered function", async () => {
+            let result = await go(sum, 12, 13);
+            assert.strictEqual(result, 25);
         });
 
-        it("should call a registered async function", () => {
-            return go(exists, "./package.json").then(result => {
-                assert.strictEqual(result, true);
-            });
+        it("should call a registered async function", async () => {
+            let result = await go(exists, "./package.json");
+            assert.strictEqual(result, true);
         });
 
-        it("should call an unregistered function", () => {
-            return go((a, b) => a * b, 10, 10).then(result => {
-                assert.strictEqual(result, 100);
-            });
+        it("should call an unregistered function", async () => {
+            let result = await go((a, b) => a * b, 10, 10);
+            assert.strictEqual(result, 100);
         });
 
-        it("should call an unregistered async function", () => {
-            return go((a, b) => Promise.resolve(a * b), 10, 10).then(result => {
-                assert.strictEqual(result, 100);
-            });
+        it("should call an unregistered async function", async () => {
+            let result = await go((a, b) => Promise.resolve(a * b), 10, 10);
+            assert.strictEqual(result, 100);
         });
 
         it("should parse FRON token in the worker thread", async () => {
@@ -96,19 +92,23 @@ if (isMainThread) {
             assert.deepStrictEqual(data, data["foo"]["circular"]);
         });
 
-        it("should throw error", () => {
-            return go(throwError).catch(err => {
+        it("should throw error", async () => {
+            try {
+                await go(throwError);
+            } catch (err) {
                 assert.strictEqual(err.message, "Something went wrong");
-            });
+            }
         });
 
-        it("should throw malform registry error", () => {
-            return go(greeting).catch(err => {
+        it("should throw malform registry error", async () => {
+            try {
+                await go(greeting);
+            } catch (err) {
                 assert.strictEqual(
                     err.message,
                     "Goroutine registry malformed, function call cannot be performed"
                 );
-            });
+            }
         });
     });
 }
