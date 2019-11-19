@@ -392,7 +392,7 @@ if (!isMainThread) {
             return;
         }
 
-        let [uid, target, id, args] = msg;
+        let [uid, target, signature, args] = msg;
         let fn: Function;
 
         try {
@@ -412,7 +412,7 @@ if (!isMainThread) {
                 // worker thread doesn't share the same copy of registry.
                 // If detected, throw an error to prevent running the
                 // malformed function.
-                if (!fn || id !== hash(String(fn))) {
+                if (!fn || signature !== hash(String(fn))) {
                     throw new Error(
                         "Goroutine registry malformed, function call " +
                         "cannot be performed"
