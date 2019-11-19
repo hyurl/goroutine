@@ -16,33 +16,26 @@ async function getDebugFlag() {
 }
 
 export default <Adapter>{
-    async fork(filename: string, options: {
-        execArgv?: string[];
-        workerData?: any;
-        stdin?: boolean;
-        stdout?: boolean;
-        stderr?: boolean;
+    async fork(filename, {
+        execArgv = process.execArgv,
+        workerData,
+        stdin,
+        stdout,
+        stderr
     }) {
-        let {
-            execArgv = process.execArgv,
-            workerData,
-            stdin,
-            stdout,
-            stderr
-        } = options;
+        let debugArgv = await getDebugFlag();
         let argv = [
             ...process.argv.slice(2),
             "--go-worker=true",
             `--worker-id=${uids.next().value}`
         ];
-        let debugArgv = await getDebugFlag();
-
-        if (workerData) {
-            argv.push(`--worker-data=${JSON.stringify(workerData)}`);
-        }
 
         if (debugArgv) {
             execArgv.push(debugArgv);
+        }
+
+        if (workerData) {
+            argv.push(`--worker-data=${JSON.stringify(workerData)}`);
         }
 
         return fork(filename, argv, {

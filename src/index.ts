@@ -70,7 +70,7 @@ if (isWorker) {
  */
 export const isMainThread = !isWorker;
 /**
- * An interger represents the current thread id, in the main thread, it will
+ * An integer represents the current thread id, in the main thread, it will
  * always be `0`.
  */
 export const threadId = workerId;

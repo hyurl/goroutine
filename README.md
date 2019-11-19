@@ -67,7 +67,7 @@ above example. But it would be more polite to list out all the details.
  */
 const isMainThread: boolean;
 /**
- * An interger represents the current thread id, in the main thread, it will
+ * An integer represents the current thread id, in the main thread, it will
  * always be `0`.
  */
 const threadId: number;
@@ -198,3 +198,8 @@ If however you're using WebStorm, congratulations, that it does support worker
 threads debugging, please
 [check this article](https://blog.jetbrains.com/webstorm/2018/10/webstorm-2018-3-eap-6/)
 for more details.
+
+If using `child_process` adapter, this module also prevents debugging port
+conflicts by choosing another available port when detected under debug mode,
+which is a very common headache when it comes to debug multi-processing Node.js
+project.
