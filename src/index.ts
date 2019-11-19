@@ -58,8 +58,8 @@ if (isWorker) {
             isWorkerThreadsAdapter = true;
 
             // HACK, pass `process.argv` to the worker thread.
-            _workerData = worker_threads.workerData.workerData;
             process.argv.push(...worker_threads.workerData.argv);
+            _workerData = worker_threads.workerData.workerData;
         }
     } catch (e) { }
 }
