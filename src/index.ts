@@ -32,7 +32,7 @@ let isWorkerThreadsAdapter: boolean;
 let argv = parseArgv(process.argv.slice(2));
 let isWorker: boolean = argv["go-worker"] === "true";
 let workerId: number = Number(argv["worker-id"] || 0);
-let _workerData: any = argv["worker-data"];
+let _workerData: any = argv["worker-data"] || null;
 
 
 if (isWorker) {
@@ -41,7 +41,7 @@ if (isWorker) {
     port = process;
     adapter = ChildProcessAdapter;
 
-    if (_workerData !== undefined) {
+    if (_workerData !== null) {
         _workerData = JSON.parse(_workerData);
     }
 } else {
@@ -50,13 +50,16 @@ if (isWorker) {
 
         isWorker = !worker_threads.isMainThread;
         workerId = worker_threads.threadId;
-        _workerData = worker_threads.workerData;
         WorkerThreadsAdapter = require("./adapters/worker_threads").default;
 
         if (isWorker) {
             port = worker_threads.parentPort;
             adapter = WorkerThreadsAdapter;
             isWorkerThreadsAdapter = true;
+
+            // HACK, pass `process.argv` to the worker thread.
+            _workerData = worker_threads.workerData.workerData;
+            process.argv.push(...worker_threads.workerData.argv);
         }
     } catch (e) { }
 }
