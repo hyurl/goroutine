@@ -349,13 +349,11 @@ export namespace go {
         // then always use `ChildProcessAdapter`, otherwise automatically
         // choose the ideal one from `WorkerThreadsAdapter` and
         // `ChildProcessAdapter`.
-        if (_adapter === "child_process") {
+        if (_adapter === "child_process" || WorkerThreadsAdapter === null) {
             adapter = ChildProcessAdapter;
-        } else if (WorkerThreadsAdapter) {
+        } else {
             adapter = WorkerThreadsAdapter;
             isWorkerThreadsAdapter = true;
-        } else {
-            adapter = ChildProcessAdapter;
         }
 
         filename = await resolveEntryFile(filename);
