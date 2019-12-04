@@ -1,4 +1,4 @@
-# Go-routine
+# Goroutine
 
 **Runs a function in a parallel worker thread.**
 
@@ -11,13 +11,13 @@
 ## Install
 
 ```sh
-npm i go-routine
+npm i @hyurl/goroutine
 ```
 
 ## Example
 
 ```ts
-import go, { isMainThread, threadId } from "go-routine";
+import go, { isMainThread, threadId } from "@hyurl/goroutine";
 import * as marked from "marked"; // A module to transfer Markdown to HTML
 
 go.register(markdown2html);

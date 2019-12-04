@@ -1,5 +1,5 @@
 {
-  "name": "go-routine",
+  "name": "@hyurl/goroutine",
   "version": "1.0.0",
   "description": "Runs a function in a parallel worker thread.",
   "main": "dist/index.js",
@@ -9,7 +9,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/hyurl/go-routine.git"
+    "url": "git+https://github.com/hyurl/goroutine.git"
   },
   "keywords": [
     "go",
@@ -18,14 +18,14 @@
   "author": "Ayon Lee <i@hyurl.com>",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/hyurl/go-routine/issues"
+    "url": "https://github.com/hyurl/goroutine/issues"
   },
-  "homepage": "https://github.com/hyurl/go-routine#readme",
+  "homepage": "https://github.com/hyurl/goroutine#readme",
   "devDependencies": {
     "@types/minimist": "^1.2.0",
-    "@types/node": "^12.12.7",
+    "@types/node": "^12.12.14",
     "@types/string-hash": "^1.1.1",
-    "fron": "^0.2.0",
+    "fron": "^0.2.2",
     "mocha": "^6.2.2",
     "source-map-support": "^0.5.16"
   },
