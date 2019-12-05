@@ -44,9 +44,9 @@ if (isMainThread) {
             });
         });
 
-        after(async () => {
-            await go.terminate();
-        });
+        // after(async () => {
+        //     await go.terminate();
+        // });
 
         let greeting = go.register(() => "Hello, World!");
 
@@ -120,6 +120,13 @@ if (isMainThread) {
                     "Goroutine registry malformed, function call cannot be performed"
                 );
             }
+        });
+
+        it("should call function when Goroutine is not open", async () => {
+            await go.terminate();
+
+            let result = await go((a, b) => Promise.resolve(a * b), 10, 10);
+            assert.strictEqual(result, 100);
         });
     });
 }

@@ -33,6 +33,7 @@ let argv = parseArgv(process.argv.slice(2));
 let isWorker: boolean = argv["go-worker"] === "true";
 let workerId: number = Number(argv["worker-id"] || 0);
 let _workerData: any = argv["worker-data"] || null;
+let noWorkerWarningEmitted = false;
 
 
 if (isWorker) {
@@ -247,6 +248,18 @@ export async function go<R, A extends any[] = any[]>(
     ...args: A
 ): Promise<R extends Promise<infer U> ? U : R> {
     ensureCallInMainThread("go");
+
+    if (pool.length === 0) {
+        if (!noWorkerWarningEmitted) {
+            noWorkerWarningEmitted = true;
+            process.emitWarning(
+                "Goroutine is not working, " +
+                "function call will be handled in the main thread"
+            );
+        }
+
+        return fn.apply(void 0, args);
+    }
 
     let uid = uids.next().value;
     let worker = pool[uid % pool.length];
