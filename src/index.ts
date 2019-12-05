@@ -218,6 +218,8 @@ function serializable(data: any) {
                     // If the value resolved to void, simply delete the property.
                     if (value === undefined) {
                         delete data[key];
+                    } else {
+                        data[key] = value;
                     }
                 }
             }
