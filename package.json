@@ -1,6 +1,6 @@
 {
   "name": "@hyurl/goroutine",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Runs a function in a parallel worker thread.",
   "main": "dist/index.js",
   "types": "src/index.ts",
