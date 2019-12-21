@@ -5,7 +5,6 @@ import { pathExists, readFile } from 'fs-extra';
 import { err2obj, obj2err } from 'err2obj';
 import sequid from "sequid";
 import hash = require("string-hash");
-import decircularize = require("decircularize");
 import { Adapter, Worker } from './headers';
 import { ChildProcess } from 'child_process';
 import { Worker as ThreadWorker } from "worker_threads";
@@ -169,68 +168,79 @@ async function forkWorker(
     });
 }
 
-/**
- * NOTE: This function now only supports primitives and simple objects.
- */
-function serializable(data: any) {
+function serializable(data: any, forSCA = false) {
+    return removeUnserializableElements(data, forSCA, []);
+}
+
+function removeUnserializableElements(
+    data: any,
+    forSCA = false,
+    parentNodes: any[]
+) {
     let type = typeof data;
 
-    if (data === null) {
-        return null;
-    } else if (data === undefined ||
-        type === "function" || type === "symbol" ||
-        (type === "bigint" && !isWorkerThreadsAdapter)) {
-        return void 0;
+    if (data === null || data === undefined ||
+        type === "function" || type === "symbol") {
+        return data === null ? null : void 0;
+    }
+
+    if (type === "bigint") {
+        return forSCA ? data : void 0;
     } else if (type === "object") {
+        if (parentNodes.includes(data)) {
+            return void 0;
+        } else {
+            parentNodes = [...parentNodes, data];
+        }
+
         if (data instanceof Map) {
             let map = new Map();
 
             for (let [key, value] of data) {
-                key = serializable(key);
-
-                // Skip the items that the key resolves to void.
-                if (key !== undefined) {
-                    map.set(key, serializable(value));
-                }
+                key = removeUnserializableElements(key, forSCA, parentNodes);
+                key !== undefined && map.set(key, removeUnserializableElements(value, forSCA, parentNodes));
             }
 
-            return map;
+            return forSCA ? map : [...map];
         } else if (data instanceof Set) {
             let set = new Set();
 
             for (let value of data) {
-                set.add(serializable(value));
+                value = removeUnserializableElements(value, forSCA, parentNodes);
+                value !== undefined && set.add(value);
             }
 
-            return set;
+            return forSCA ? set : [...set];
         } else if (Array.isArray(data)) {
             let arr = [];
 
-            for (let i = 0; i < data.length; ++i) {
-                arr.push(serializable(data[i]));
+            for (let i = 0, len = data.length; i < len; ++i) {
+                arr.push(removeUnserializableElements(data[i], forSCA, parentNodes));
             }
 
             return arr;
+        } else if (
+            data instanceof Date ||
+            data instanceof RegExp ||
+            data instanceof ArrayBuffer ||
+            ArrayBuffer.isView(data)) {
+            return data;
         } else {
-            let obj = {};
+            let obj = Object.create(Object.getPrototypeOf(data));
 
             for (let key in data) {
                 // Only care about own properties.
                 if (data.hasOwnProperty(key)) {
-                    let value = serializable(data[key]);
-
-                    // If the value resolved to void, simply delete the property.
-                    if (value !== undefined) {
-                        obj[key] = value;
-                    }
+                    let value = removeUnserializableElements(data[key], forSCA, parentNodes);
+                    value !== undefined && (obj[key] = value);
                 }
             }
 
             return obj;
         }
-    } else {
-        return data;
     }
+
+    return data;
 }
 
 function ensureCallInMainThread(name: string) {
@@ -282,7 +292,7 @@ export async function go<R, A extends any[] = any[]>(
             hash(String(fn)),
             // Ensure the arguments are serializable and doesn't have
             // circular references.
-            serializable(decircularize(args))
+            serializable(args, isWorkerThreadsAdapter)
         ];
 
         // Add the task.
@@ -377,7 +387,7 @@ export namespace go {
         await Promise.all(
             new Array(workers).fill(forkWorker(adapter, filename, {
                 execArgv,
-                workerData: serializable(decircularize(workerData)),
+                workerData: serializable(workerData, isWorkerThreadsAdapter),
                 stdin,
                 stdout,
                 stderr
@@ -439,16 +449,11 @@ if (!isMainThread) {
 
             let result = await fn(...args);
 
-            // Ensure the result is serializable and doesn't have
-            // circular references.
-            result = serializable(decircularize(result));
-
+            result = serializable(result, isWorkerThreadsAdapter);
             adapter.send([uid, null, result]);
         } catch (err) {
             // Use err2obj to convert the error so that it can be
             // serialized and sent through the channel.
-            // Since err2obj already calls decircularize() internally, here only
-            // need to call serializable() on it.
             adapter.send([uid, serializable(err2obj(err)), null]);
         }
     });

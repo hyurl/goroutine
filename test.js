@@ -32,6 +32,24 @@ let throwError = go.register(() => {
 });
 let getThreadId = go.register(() => threadId);
 let getWorkerData = go.register(() => workerData);
+let getMap = go.register(() => {
+    return new Map([["foo", "Hello"], ["bar", "World"]]);
+});
+let getDate = go.register(() => {
+    return new Date();
+});
+let getRegExp = go.register(() => {
+    return /[a-zA-Z0-9]/;
+});
+let getBuffer = go.register(() => {
+    return Buffer.from("Hello, World");
+});
+let transferCircular = go.register(() => {
+    let obj = { foo: "Hello, World" };
+    obj.bar = obj;
+
+    return obj;
+});
 
 if (isMainThread) {
     describe("Goroutine", () => {
@@ -120,6 +138,34 @@ if (isMainThread) {
                     "Goroutine registry malformed, function call cannot be performed"
                 );
             }
+        });
+
+        it("should transfer a map", async () => {
+            let result = await go(getMap);
+            assert.deepStrictEqual(result, new Map([
+                ["foo", "Hello"],
+                ["bar", "World"]
+            ]));
+        });
+
+        it("should transfer a date", async () => {
+            let result = await go(getDate);
+            assert(result instanceof Date);
+        });
+
+        it("should transfer a regular expression", async () => {
+            let result = await go(getRegExp);
+            assert.deepStrictEqual(result, /[a-zA-Z0-9]/);
+        });
+
+        it("should transfer a buffer", async () => {
+            let result = await go(getBuffer);
+            assert.deepStrictEqual(result, Uint8Array.from(Buffer.from("Hello, World")));
+        });
+
+        it("should delete circular properties", async () => {
+            let result = await go(transferCircular);
+            assert.deepStrictEqual(result, { foo: "Hello, World" });
         });
 
         it("should call function when Goroutine is not open", async () => {
