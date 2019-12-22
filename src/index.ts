@@ -9,7 +9,7 @@ import { ChildProcess } from 'child_process';
 import { Worker as ThreadWorker } from "worker_threads";
 import ChildProcessAdapter from "./adapters/child_process";
 import parseArgv = require("minimist");
-import { clone, declone } from "structured-clone";
+import { clone, declone } from "@hyurl/structured-clone";
 
 
 const pool: Worker[] = [];

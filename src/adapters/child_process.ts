@@ -3,7 +3,7 @@ import { Adapter } from "../headers";
 import getPort = require("get-port");
 import parseArgv = require("minimist");
 import sequid from "sequid";
-import { clone } from "structured-clone";
+import { clone } from "@hyurl/structured-clone";
 
 const uids = sequid();
 const argv = parseArgv(process.execArgv);

@@ -176,10 +176,11 @@ if (isMainThread) {
 
 2. The data passed to the function or returned by the function must be
     serializable. If the `worker_threads` adapter is used (by default), then the
-    [HTML structured clone algorithm](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm)
+    [HTML Structured Clone Algorithm](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm)
     will be used to clone data. If `child_process` adapter is used, then JSON is
     used to serialize data. Those properties that cannot be serialized will be
-    lost during transmission.
+    lost during transmission. (Since v1.1, JSON serialization also uses a
+    structured clone algorithm that is compatible with HSCA.)
 
 3. Worker threads are only meant to run CPU intensive code, they will not do any
     help for I/O intensive work. Being said so, it is still danger to block the
