@@ -3,6 +3,7 @@ import { Adapter } from "../headers";
 import getPort = require("get-port");
 import parseArgv = require("minimist");
 import sequid from "sequid";
+import { clone } from "structured-clone";
 
 const uids = sequid();
 const argv = parseArgv(process.execArgv);
@@ -35,7 +36,7 @@ export default <Adapter>{
         }
 
         if (workerData) {
-            argv.push(`--worker-data=${JSON.stringify(workerData)}`);
+            argv.push(`--worker-data=${JSON.stringify(clone(workerData))}`);
         }
 
         return fork(filename, argv, {
@@ -49,7 +50,10 @@ export default <Adapter>{
         });
     },
     async terminate(worker: ChildProcess) {
-        worker.kill();
+        await new Promise(resolve => {
+            worker.once("exit", () =>resolve());
+            worker.kill();
+        });
     },
     send(msg: any) {
         if (process.send)

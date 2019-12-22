@@ -1,6 +1,6 @@
 {
   "name": "@hyurl/goroutine",
-  "version": "1.0.5",
+  "version": "1.1.0",
   "description": "Runs a function in a parallel worker thread.",
   "main": "dist/index.js",
   "types": "src/index.ts",
@@ -30,8 +30,8 @@
     "source-map-support": "^0.5.16"
   },
   "dependencies": {
+    "@hyurl/structured-clone": "^0.1.0",
     "@types/fs-extra": "^8.0.1",
-    "err2obj": "^1.1.0",
     "fs-extra": "^8.1.0",
     "get-port": "^5.0.0",
     "minimist": "^1.2.0",

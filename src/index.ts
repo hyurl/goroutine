@@ -2,7 +2,6 @@ import * as path from "path";
 import { cpus } from 'os';
 import { runInThisContext } from 'vm';
 import { pathExists, readFile } from 'fs-extra';
-import { err2obj, obj2err } from 'err2obj';
 import sequid from "sequid";
 import hash = require("string-hash");
 import { Adapter, Worker } from './headers';
@@ -10,6 +9,7 @@ import { ChildProcess } from 'child_process';
 import { Worker as ThreadWorker } from "worker_threads";
 import ChildProcessAdapter from "./adapters/child_process";
 import parseArgv = require("minimist");
+import { clone, declone } from "structured-clone";
 
 
 const pool: Worker[] = [];
@@ -27,7 +27,7 @@ let adapter: Adapter = null;
 let port: {
     on: (event: "message", handle: (msg: any) => void) => void
 } = null;
-let isWorkerThreadsAdapter: boolean;
+let isWorkerThreadsAdapter: boolean = false;
 let argv = parseArgv(process.argv.slice(2));
 let isWorker: boolean = argv["go-worker"] === "true";
 let workerId: number = Number(argv["worker-id"] || 0);
@@ -42,7 +42,7 @@ if (isWorker) {
     adapter = ChildProcessAdapter;
 
     if (_workerData !== null) {
-        _workerData = JSON.parse(_workerData);
+        _workerData = JSON.parse(declone(_workerData));
     }
 } else {
     try { // Try to load `worker_threads` module and adapter.
@@ -149,9 +149,17 @@ async function forkWorker(
             delete tasks[uid];
 
             if (err) {
-                task.reject(obj2err(err));
+                if (isWorkerThreadsAdapter) {
+                    task.reject(err);
+                } else {
+                    task.reject(declone(err));
+                }
             } else {
-                task.resolve(result);
+                if (isWorkerThreadsAdapter) {
+                    task.resolve(result);
+                } else {
+                    task.resolve(declone(result));
+                }
             }
         }
     }).once("exit", (code, signal) => {
@@ -161,86 +169,14 @@ async function forkWorker(
 
         // If the worker exited unexpected, fork a new worker to replace
         // the old one.
-        if (((code === null && signal === "SIGTERM") ||
-            (code === 1 && signal === undefined)) === false) {
+        if (
+            !(code === null && signal === "SIGTERM") &&
+            !(code === 1 && signal === undefined)
+        ) {
+            console.log("AAAA")
             forkWorker(adapter, filename, options);
         }
     });
-}
-
-function serializable(data: any, forSCA = false) {
-    return removeUnserializableElements(data, forSCA, []);
-}
-
-function removeUnserializableElements(
-    data: any,
-    forSCA = false,
-    parentNodes: any[]
-) {
-    let type = typeof data;
-
-    if (data === null || data === undefined ||
-        type === "function" || type === "symbol") {
-        return data === null ? null : void 0;
-    }
-
-    if (type === "bigint") {
-        return forSCA ? data : void 0;
-    } else if (type === "object") {
-        if (parentNodes.includes(data)) {
-            return void 0;
-        } else {
-            parentNodes = [...parentNodes, data];
-        }
-
-        if (data instanceof Map) {
-            let map = new Map();
-
-            for (let [key, value] of data) {
-                key = removeUnserializableElements(key, forSCA, parentNodes);
-                key !== undefined && map.set(key, removeUnserializableElements(value, forSCA, parentNodes));
-            }
-
-            return forSCA ? map : [...map];
-        } else if (data instanceof Set) {
-            let set = new Set();
-
-            for (let value of data) {
-                value = removeUnserializableElements(value, forSCA, parentNodes);
-                value !== undefined && set.add(value);
-            }
-
-            return forSCA ? set : [...set];
-        } else if (Array.isArray(data)) {
-            let arr = [];
-
-            for (let i = 0, len = data.length; i < len; ++i) {
-                arr.push(removeUnserializableElements(data[i], forSCA, parentNodes));
-            }
-
-            return arr;
-        } else if (
-            data instanceof Date ||
-            data instanceof RegExp ||
-            data instanceof ArrayBuffer ||
-            ArrayBuffer.isView(data)) {
-            return data;
-        } else {
-            let obj = Object.create(Object.getPrototypeOf(data));
-
-            for (let key in data) {
-                // Only care about own properties.
-                if (data.hasOwnProperty(key)) {
-                    let value = removeUnserializableElements(data[key], forSCA, parentNodes);
-                    value !== undefined && (obj[key] = value);
-                }
-            }
-
-            return obj;
-        }
-    }
-
-    return data;
 }
 
 function ensureCallInMainThread(name: string) {
@@ -290,9 +226,7 @@ export async function go<R, A extends any[] = any[]>(
             uid,
             target,
             hash(String(fn)),
-            // Ensure the arguments are serializable and doesn't have
-            // circular references.
-            serializable(args, isWorkerThreadsAdapter)
+            clone(args, isWorkerThreadsAdapter)
         ];
 
         // Add the task.
@@ -387,7 +321,7 @@ export namespace go {
         await Promise.all(
             new Array(workers).fill(forkWorker(adapter, filename, {
                 execArgv,
-                workerData: serializable(workerData, isWorkerThreadsAdapter),
+                workerData: clone(workerData, isWorkerThreadsAdapter),
                 stdin,
                 stdout,
                 stderr
@@ -449,12 +383,12 @@ if (!isMainThread) {
 
             let result = await fn(...args);
 
-            result = serializable(result, isWorkerThreadsAdapter);
+            result = clone(result, isWorkerThreadsAdapter);
             adapter.send([uid, null, result]);
         } catch (err) {
             // Use err2obj to convert the error so that it can be
             // serialized and sent through the channel.
-            adapter.send([uid, serializable(err2obj(err)), null]);
+            adapter.send([uid, clone(err, isWorkerThreadsAdapter), null]);
         }
     });
 }

@@ -42,7 +42,7 @@ let getRegExp = go.register(() => {
     return /[a-zA-Z0-9]/;
 });
 let getBuffer = go.register(() => {
-    return Buffer.from("Hello, World");
+    return Uint8Array.from(Buffer.from("Hello, World"));
 });
 let transferCircular = go.register(() => {
     let obj = { foo: "Hello, World" };
@@ -166,6 +166,13 @@ if (isMainThread) {
         it("should delete circular properties", async () => {
             let result = await go(transferCircular);
             assert.deepStrictEqual(result, { foo: "Hello, World" });
+        });
+
+        it("should transfer NaN and Infinity", async () => {
+            let result = await go(() => ([NaN, Infinity, -Infinity]));
+            assert(isNaN(result[0]));
+            assert.strictEqual(result[1], Infinity);
+            assert.strictEqual(result[2], -Infinity);
         });
 
         it("should call function when Goroutine is not open", async () => {
