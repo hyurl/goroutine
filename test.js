@@ -58,7 +58,7 @@ if (isMainThread) {
                 filename: __filename,
                 workers: 1,
                 workerData: { foo: "hello", bar: "world" },
-                // adapter: "child_process"
+                adapter: "child_process"
             });
         });
 
@@ -129,7 +129,7 @@ if (isMainThread) {
             }
         });
 
-        it("should throw malform registry error", async () => {
+        it("should throw malformed registry error", async () => {
             try {
                 await go(greeting);
             } catch (err) {
