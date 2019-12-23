@@ -15,12 +15,10 @@ import { clone, declone } from "@hyurl/structured-clone";
 const pool: Worker[] = [];
 const registry: Function[] = [];
 const uids = sequid(-1, true);
-const tasks: {
-    [uid: number]: {
-        resolve(result: any): void;
-        reject(err: Error): void;
-    }
-} = {};
+const tasks = new Map<number, {
+    resolve(result: any): void;
+    reject(err: Error): void;
+}>();
 
 let WorkerThreadsAdapter: Adapter = null;
 let adapter: Adapter = null;
@@ -141,12 +139,12 @@ async function forkWorker(
         }
 
         let [uid, err, result] = res;
-        let task = tasks[uid];
+        let task = tasks.get(uid);
 
         // If the task exists, resolve or reject it, and delete it from the
         // stack.
         if (task) {
-            delete tasks[uid];
+            tasks.delete(uid);
 
             if (err) {
                 if (isWorkerThreadsAdapter) {
@@ -230,7 +228,7 @@ export async function go<R, A extends any[] = any[]>(
         ];
 
         // Add the task.
-        tasks[uid] = { resolve, reject };
+        tasks.set(uid, { resolve, reject });
 
         // Transfer the task message to the worker.
         if (isWorkerThreadsAdapter) {
