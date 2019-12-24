@@ -171,7 +171,6 @@ async function forkWorker(
             !(code === null && signal === "SIGTERM") &&
             !(code === 1 && signal === undefined)
         ) {
-            console.log("AAAA")
             forkWorker(adapter, filename, options);
         }
     });
