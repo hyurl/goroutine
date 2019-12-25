@@ -12,6 +12,7 @@ import parseArgv = require("minimist");
 import { clone, declone } from "@hyurl/structured-clone";
 
 
+const threadNativeErrorSupport = parseFloat(process.versions.v8) >= 7.7;
 const pool: Worker[] = [];
 const registry: Function[] = [];
 const uids = sequid(-1, true);
@@ -147,13 +148,13 @@ async function forkWorker(
             tasks.delete(uid);
 
             if (err) {
-                if (isWorkerThreadsAdapter) {
+                if (isWorkerThreadsAdapter && threadNativeErrorSupport) {
                     task.reject(err);
                 } else {
                     task.reject(declone(err));
                 }
             } else {
-                if (isWorkerThreadsAdapter) {
+                if (isWorkerThreadsAdapter && threadNativeErrorSupport) {
                     task.resolve(result);
                 } else {
                     task.resolve(declone(result));
@@ -223,7 +224,7 @@ export async function go<R, A extends any[] = any[]>(
             uid,
             target,
             hash(String(fn)),
-            clone(args, isWorkerThreadsAdapter)
+            clone(args, isWorkerThreadsAdapter && threadNativeErrorSupport)
         ];
 
         // Add the task.
@@ -354,6 +355,10 @@ if (!isMainThread) {
         let fn: Function;
 
         try {
+            if (!isWorkerThreadsAdapter || !threadNativeErrorSupport) {
+                args = declone(args);
+            }
+
             if (typeof target === "string") {
                 // If the target is sent a string, that means an
                 // unregistered function has been passed to the worker

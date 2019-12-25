@@ -35,14 +35,14 @@ let getWorkerData = go.register(() => workerData);
 let getMap = go.register(() => {
     return new Map([["foo", "Hello"], ["bar", "World"]]);
 });
-let getDate = go.register(() => {
-    return new Date();
+let transDate = go.register((date) => {
+    return date || new Date();
 });
-let getRegExp = go.register(() => {
-    return /[a-zA-Z0-9]/;
+let transRegExp = go.register((re) => {
+    return re || /[a-zA-Z0-9]/;
 });
-let getBuffer = go.register(() => {
-    return Uint8Array.from(Buffer.from("Hello, World"));
+let transBuffer = go.register((buf) => {
+    return buf || Uint8Array.from(Buffer.from("Hello, World"));
 });
 let transferCircular = go.register(() => {
     let obj = { foo: "Hello, World" };
@@ -58,7 +58,7 @@ if (isMainThread) {
                 filename: __filename,
                 workers: 1,
                 workerData: { foo: "hello", bar: "world" },
-                adapter: "child_process"
+                // adapter: "child_process"
             });
         });
 
@@ -149,18 +149,22 @@ if (isMainThread) {
         });
 
         it("should transfer a date", async () => {
-            let result = await go(getDate);
-            assert(result instanceof Date);
+            let date = new Date();
+            let result = await go(transDate, date);
+            // assert(result instanceof Date);
+            assert.deepStrictEqual(result, date);
         });
 
         it("should transfer a regular expression", async () => {
-            let result = await go(getRegExp);
-            assert.deepStrictEqual(result, /[a-zA-Z0-9]/);
+            let re = /[a-zA-Z0-9]/;
+            let result = await go(transRegExp, re);
+            assert.deepStrictEqual(result, re);
         });
 
         it("should transfer a buffer", async () => {
-            let result = await go(getBuffer);
-            assert.deepStrictEqual(result, Uint8Array.from(Buffer.from("Hello, World")));
+            let buf = Uint8Array.from(Buffer.from("Hello, World"));
+            let result = await go(transBuffer, buf);
+            assert.deepStrictEqual(result, buf);
         });
 
         it("should delete circular properties", async () => {
