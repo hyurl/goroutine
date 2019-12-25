@@ -58,7 +58,14 @@ if (isWorker) {
 
             // HACK, pass `process.argv` to the worker thread.
             process.argv.push(...worker_threads.workerData.argv);
-            _workerData = worker_threads.workerData.workerData;
+
+            // If no native error clone support, the custom clone algorithm will
+            // be used instead.
+            if (nativeErrorCloneSupport) {
+                _workerData = worker_threads.workerData.workerData;
+            } else {
+                _workerData = declone(worker_threads.workerData.workerData);
+            }
         }
     } catch (e) { }
 }

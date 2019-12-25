@@ -1,5 +1,8 @@
 import { Worker, parentPort } from "worker_threads";
 import { Adapter } from "../headers";
+import { clone } from "@hyurl/structured-clone";
+
+const nativeErrorCloneSupport = parseFloat(process.versions.v8) >= 7.7;
 
 export default <Adapter>{
     async fork(filename, {
@@ -12,7 +15,7 @@ export default <Adapter>{
             workerData: {
                 // HACK, pass `process.argv` to the worker thread.
                 argv: process.argv.slice(2),
-                workerData
+                workerData: clone(workerData, nativeErrorCloneSupport)
             },
             ...extra
         });
