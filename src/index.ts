@@ -12,6 +12,7 @@ import parseArgv = require("minimist");
 import { clone, declone } from "@hyurl/structured-clone";
 
 
+const Module: new () => NodeJS.Module = Object.getPrototypeOf(module).constructor;
 const nativeErrorCloneSupport = parseFloat(process.versions.v8) >= 7.7;
 const pool: Worker[] = [];
 const registry: Function[] = [];
@@ -187,6 +188,18 @@ async function forkWorker(
     });
 }
 
+function isFunction(fn: any) {
+    return typeof fn === "function" && String(fn).slice(0, 6) !== "class ";
+}
+
+function ensureFunctionArg(name: string, fn: any) {
+    if (!isFunction(fn)) {
+        let type: string = typeof fn;
+        type === "function" && (type = "class");
+        throw new TypeError(`${name}() requires a function, ${type} is given`);
+    }
+}
+
 function ensureCallInMainThread(name: string) {
     if (!isMainThread) {
         throw new Error(`Calling ${name}() in the worker thread is not allowed`);
@@ -206,6 +219,7 @@ export async function go<R, A extends any[] = any[]>(
     ...args: A
 ): Promise<R extends Promise<infer U> ? U : R> {
     ensureCallInMainThread("go");
+    ensureFunctionArg("go", fn);
 
     if (pool.length === 0) {
         if (!noWorkerWarningEmitted) {
@@ -250,10 +264,56 @@ export async function go<R, A extends any[] = any[]>(
 }
 
 export namespace go {
+    const includes: (NodeJS.Module | object)[] = [];
+
+    // Resolve lazy load functions.
+    setImmediate(() => {
+        for (let module of includes) {
+            let exports: any;
+
+            if (module instanceof Module) {
+                exports = module.exports;
+            } else if (typeof module === "object") {
+                exports = module;
+            }
+
+            if (typeof exports === "object") {
+                for (let x in exports) {
+                    if (Object.prototype.hasOwnProperty.call(exports, x) &&
+                        isFunction(exports[x])) {
+                        register(exports[x]);
+                    }
+                }
+            } else if (isFunction(exports)) {
+                register(exports);
+            }
+        }
+    });
+
     /** Registers a function that can be used in the worker thread. */
     export function register<T extends Function>(fn: T): T {
-        registry.push(fn);
+        ensureFunctionArg("register", fn);
+        let index = registry.indexOf(fn);
+        index === -1 && registry.push(fn);
         return fn;
+    }
+
+    /**
+     * Automatically registers all functions exported by a module. (lazy-load)
+     */
+    export function use(module: NodeJS.Module): void;
+    export function use(exports: any): void;
+    export function use(module: any) {
+        if (module instanceof Module) {
+            let index = includes.indexOf(module);
+            index === -1 && includes.push(module);
+        } else if (module && typeof module === "object") {
+            let index = includes.indexOf(module);
+            index === -1 && includes.push(module);
+        } else {
+            throw new TypeError(
+                "Argument for go.use() must be a Node.js module or its exports");
+        }
     }
 
     /** Starts the goroutine and forks necessary workers. */
@@ -404,4 +464,7 @@ if (!isMainThread) {
             adapter.send([uid, clone(err, useNativeClone), null]);
         }
     });
+
+    // Notify the main thread the worker is ready.
+    setImmediate(() => adapter.send("ready"));
 }

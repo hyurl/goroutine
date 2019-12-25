@@ -39,19 +39,23 @@ export default <Adapter>{
             argv.push(`--worker-data=${JSON.stringify(clone(workerData))}`);
         }
 
-        return fork(filename, argv, {
-            execArgv,
-            stdio: [
-                stdin ? "pipe" : "inherit",
-                stdout ? "pipe" : "inherit",
-                stderr ? "pipe" : "inherit",
-                "ipc"
-            ]
+        return new Promise((resolve, reject) => {
+            let worker = fork(filename, argv, {
+                execArgv,
+                stdio: [
+                    stdin ? "pipe" : "inherit",
+                    stdout ? "pipe" : "inherit",
+                    stderr ? "pipe" : "inherit",
+                    "ipc"
+                ]
+            });
+            worker.once("message", () => resolve(worker))
+                .once("error", reject);
         });
     },
     async terminate(worker: ChildProcess) {
         await new Promise(resolve => {
-            worker.once("exit", () =>resolve());
+            worker.once("exit", () => resolve());
             worker.kill();
         });
     },

@@ -10,14 +10,18 @@ export default <Adapter>{
         workerData,
         ...extra
     }) {
-        return new Worker(filename, {
-            execArgv,
-            workerData: {
-                // HACK, pass `process.argv` to the worker thread.
-                argv: process.argv.slice(2),
-                workerData: clone(workerData, nativeErrorCloneSupport)
-            },
-            ...extra
+        return new Promise<Worker>((resolve, reject) => {
+            let worker = new Worker(filename, {
+                execArgv,
+                workerData: {
+                    // HACK, pass `process.argv` to the worker thread.
+                    argv: process.argv.slice(2),
+                    workerData: clone(workerData, nativeErrorCloneSupport)
+                },
+                ...extra
+            });
+            worker.once("message", () => resolve(worker))
+                .once("error", reject);
         });
     },
     async terminate(worker: Worker) {

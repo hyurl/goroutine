@@ -5,6 +5,8 @@ const fs = require("fs");
 const assert = require("assert");
 const FRON = require("fron");
 
+go.use(module);
+
 go.register(FRON.parseToken);
 
 go.register(sum);
@@ -51,6 +53,10 @@ let transferCircular = go.register(() => {
     return obj;
 });
 
+exports.lazyFunc = function lazyFunc() {
+    return "Lazy load function";
+};
+
 if (isMainThread) {
     describe("Goroutine", () => {
         before(async () => {
@@ -61,12 +67,6 @@ if (isMainThread) {
                 adapter: "child_process"
             });
         });
-
-        // after(async () => {
-        //     await go.terminate();
-        // });
-
-        let greeting = go.register(() => "Hello, World!");
 
         it("main threadId should be 0", async () => {
             assert.strictEqual(threadId, 0);
@@ -130,6 +130,8 @@ if (isMainThread) {
         });
 
         it("should throw malformed registry error", async () => {
+            let greeting = go.register(() => "Hello, World!");
+
             try {
                 await go(greeting);
             } catch (err) {
@@ -178,6 +180,11 @@ if (isMainThread) {
             assert(isNaN(result[0]));
             assert.strictEqual(result[1], Infinity);
             assert.strictEqual(result[2], -Infinity);
+        });
+
+        it("should automatically register a function from the exports", async () => {
+            let result = await go(exports.lazyFunc);
+            assert.strictEqual(result, "Lazy load function");
         });
 
         it("should call function when Goroutine is not open", async () => {
