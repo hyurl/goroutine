@@ -32,8 +32,8 @@ let throwError = go.register(() => {
 });
 let getThreadId = go.register(() => threadId);
 let getWorkerData = go.register(() => workerData);
-let getMap = go.register(() => {
-    return new Map([["foo", "Hello"], ["bar", "World"]]);
+let transMap = go.register((map) => {
+    return map || new Map([["foo", "Hello"], ["bar", "World"]]);
 });
 let transDate = go.register((date) => {
     return date || new Date();
@@ -58,7 +58,7 @@ if (isMainThread) {
                 filename: __filename,
                 workers: 1,
                 workerData: { foo: "hello", bar: "world" },
-                // adapter: "child_process"
+                adapter: "child_process"
             });
         });
 
@@ -141,11 +141,12 @@ if (isMainThread) {
         });
 
         it("should transfer a map", async () => {
-            let result = await go(getMap);
-            assert.deepStrictEqual(result, new Map([
+            let map = new Map([
                 ["foo", "Hello"],
                 ["bar", "World"]
-            ]));
+            ]);
+            let result = await go(transMap);
+            assert.deepStrictEqual(result, map);
         });
 
         it("should transfer a date", async () => {

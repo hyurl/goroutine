@@ -12,7 +12,7 @@ import parseArgv = require("minimist");
 import { clone, declone } from "@hyurl/structured-clone";
 
 
-const threadNativeErrorSupport = parseFloat(process.versions.v8) >= 7.7;
+const nativeErrorCloneSupport = parseFloat(process.versions.v8) >= 7.7;
 const pool: Worker[] = [];
 const registry: Function[] = [];
 const uids = sequid(-1, true);
@@ -63,6 +63,9 @@ if (isWorker) {
     } catch (e) { }
 }
 
+// Must use `let` to define this variable, since it may be changed when starting
+// the goroutine.
+let useNativeClone = isWorkerThreadsAdapter && nativeErrorCloneSupport;
 
 /**
  * Whether the current the thread is the main thread.
@@ -148,13 +151,13 @@ async function forkWorker(
             tasks.delete(uid);
 
             if (err) {
-                if (isWorkerThreadsAdapter && threadNativeErrorSupport) {
+                if (useNativeClone) {
                     task.reject(err);
                 } else {
                     task.reject(declone(err));
                 }
             } else {
-                if (isWorkerThreadsAdapter && threadNativeErrorSupport) {
+                if (useNativeClone) {
                     task.resolve(result);
                 } else {
                     task.resolve(declone(result));
@@ -224,7 +227,7 @@ export async function go<R, A extends any[] = any[]>(
             uid,
             target,
             hash(String(fn)),
-            clone(args, isWorkerThreadsAdapter && threadNativeErrorSupport)
+            clone(args, useNativeClone)
         ];
 
         // Add the task.
@@ -313,6 +316,7 @@ export namespace go {
         } else {
             adapter = WorkerThreadsAdapter;
             isWorkerThreadsAdapter = true;
+            useNativeClone = isWorkerThreadsAdapter && nativeErrorCloneSupport;
         }
 
         filename = await resolveEntryFile(filename);
@@ -355,7 +359,7 @@ if (!isMainThread) {
         let fn: Function;
 
         try {
-            if (!isWorkerThreadsAdapter || !threadNativeErrorSupport) {
+            if (!useNativeClone) {
                 args = declone(args);
             }
 
@@ -366,7 +370,7 @@ if (!isMainThread) {
                 // it to handle the task.
                 // Use `()` to wrap the code in order to let
                 // `runInThisContext` return the result evaluated with a
-                // function definition, 
+                // function definition.
                 fn = runInThisContext("(" + target + ")");
             } else {
                 fn = registry[target];
@@ -385,12 +389,12 @@ if (!isMainThread) {
 
             let result = await fn(...args);
 
-            result = clone(result, isWorkerThreadsAdapter);
+            result = clone(result, useNativeClone);
             adapter.send([uid, null, result]);
         } catch (err) {
             // Use err2obj to convert the error so that it can be
             // serialized and sent through the channel.
-            adapter.send([uid, clone(err, isWorkerThreadsAdapter), null]);
+            adapter.send([uid, clone(err, useNativeClone), null]);
         }
     });
 }
