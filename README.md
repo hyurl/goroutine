@@ -196,7 +196,7 @@ if (isMainThread) {
     10. Error (native errors, AssertionError, and any error type on the global object)
 
     (NOTE: `Buffer` may be transferred to Uint8Array when using native HTML
-    structured clone algorithm)
+    structured clone algorithm.)
 
 3. Worker threads are only meant to run CPU intensive code, they will not do any
     help for I/O intensive work. Being said so, it is still danger to block the
@@ -208,8 +208,7 @@ if (isMainThread) {
 
 Currently, VS Code doesn't have the ability to debug worker threads, if
 debugging is necessary in development, try switching the adapter to
-`child_process`, and only use `worker_threads` when deploying, but be aware the
-different serialization algorithms between them.
+`child_process`, and only use `worker_threads` when deploying.
 
 If however you're using WebStorm, congratulations, that it does support worker
 threads debugging, please
@@ -217,9 +216,9 @@ threads debugging, please
 for more details.
 
 If using `child_process` adapter, this module also prevents debugging port
-conflicts by choosing another available port when detected under debug mode,
-which is a very common headache when it comes to debug multi-processing Node.js
-project.
+conflicts out of box by choosing another available port when detected under
+debug mode, which is a very common headache when it comes to debug
+multi-processing Node.js project.
 
 ## About `go.use()`
 
@@ -243,7 +242,7 @@ export default function () {
 }
 ```
 
-There are there styles to call the `go.use()`:
+There are three styles to call the `go.use()`:
 
 1. `go.use(this)` More often used, and straight forward.
 2. `go.use(exports)` or `go.use(module.exports)` Same as above, less often used.
