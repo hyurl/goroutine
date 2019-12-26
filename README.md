@@ -93,6 +93,12 @@ namespace go {
     /** Registers a function that can be used in the worker thread. */
     function register<T extends Function>(fn: T): T;
 
+    /**
+     * Automatically registers all functions exported by a module. (lazy-load)
+     */
+    export function use(module: NodeJS.Module): void;
+    export function use(exports: any): void;
+
     /** Starts the goroutine and forks necessary workers. */
     function start(options?: {
         /**
@@ -175,12 +181,22 @@ if (isMainThread) {
 ```
 
 2. The data passed to the function or returned by the function must be
-    serializable. If the `worker_threads` adapter is used (by default), then the
-    [HTML Structured Clone Algorithm](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm)
-    will be used to clone data. If `child_process` adapter is used, then JSON is
-    used to serialize data. Those properties that cannot be serialized will be
-    lost during transmission. (Since v1.1, JSON serialization also uses a
-    structured clone algorithm that is compatible with HSCA.)
+    serializable. Since v1.1, this package guarantees the structured clone
+    algorithm is used for data transmission, regardless of what adapter is used.
+    Currently, these types are guaranteed to be supported:
+    1. All primitive types (except for `symbol`)
+    2. Date
+    3. RegExp
+    4. ArrayBuffer
+    5. ArrayBufferView (typed arrays, `DataView` and `*Buffer`)
+    6. Array
+    7. Object
+    8. Map
+    9. Set
+    10. Error (native errors, AssertionError, and any error type on the global object)
+
+    (NOTE: `Buffer` may be transferred to Uint8Array when using native HTML
+    structured clone algorithm)
 
 3. Worker threads are only meant to run CPU intensive code, they will not do any
     help for I/O intensive work. Being said so, it is still danger to block the
@@ -204,3 +220,33 @@ If using `child_process` adapter, this module also prevents debugging port
 conflicts by choosing another available port when detected under debug mode,
 which is a very common headache when it comes to debug multi-processing Node.js
 project.
+
+## About `go.use()`
+
+This function is added since v1.2, it will automatically registers all functions
+exported by a module in a lazy-load way, that means you can use it in the head 
+of the module and don't have to wait the definitions of its functions.
+
+```ts
+// some module
+import go from "@hyurl/goroutine";
+// By using this line of code, all function exported by this module will be
+// automatically registered to goroutine after program starts up.
+go.use(this);
+
+export function someFunction() {
+    // ...
+}
+
+export default function () {
+    // ...
+}
+```
+
+There are there styles to call the `go.use()`:
+
+1. `go.use(this)` More often used, and straight forward.
+2. `go.use(exports)` or `go.use(module.exports)` Same as above, less often used.
+3. `go.use(module)` Most of the time this style effects the same as the above
+    ones, however, it supports the export style of `module.exports = () => {}`,
+    which is not supported by the above styles.

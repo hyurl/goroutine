@@ -4,6 +4,7 @@ const { go, isMainThread, threadId, workerData } = require(".");
 const fs = require("fs");
 const assert = require("assert");
 const FRON = require("fron");
+const util = require("util");
 
 go.use(module);
 
@@ -29,8 +30,10 @@ function exists(file) {
     });
 }
 
+let err = new Error("Something went wrong");
+
 let throwError = go.register(() => {
-    throw new Error("Something went wrong");
+    throw err;
 });
 let getThreadId = go.register(() => threadId);
 let getWorkerData = go.register(() => workerData);
@@ -63,8 +66,8 @@ if (isMainThread) {
             await go.start({
                 filename: __filename,
                 workers: 1,
-                workerData: { foo: "hello", bar: "world" },
-                adapter: "child_process"
+                workerData: { foo: "hello", bar: "world", err },
+                // adapter: "child_process"
             });
         });
 
@@ -83,7 +86,9 @@ if (isMainThread) {
 
         it("should pass workerData as expected", async () => {
             let data = await go(getWorkerData);
-            assert.deepStrictEqual(data, { foo: "hello", bar: "world" });
+            assert.strictEqual(data.foo, "hello");
+            assert.strictEqual(data.bar, "world");
+            assert.strictEqual(util.format(data.err), util.format(err));
         });
 
         it("should call a registered function", async () => {
@@ -124,8 +129,8 @@ if (isMainThread) {
         it("should throw error", async () => {
             try {
                 await go(throwError);
-            } catch (err) {
-                assert.strictEqual(err.message, "Something went wrong");
+            } catch (e) {
+                assert.strictEqual(util.format(e), util.format(e));
             }
         });
 

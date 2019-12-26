@@ -42,7 +42,7 @@ if (isWorker) {
     adapter = ChildProcessAdapter;
 
     if (_workerData !== null) {
-        _workerData = JSON.parse(declone(_workerData));
+        _workerData = declone(JSON.parse(_workerData));
     }
 } else {
     try { // Try to load `worker_threads` module and adapter.
