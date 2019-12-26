@@ -10,10 +10,12 @@ import { Worker as ThreadWorker } from "worker_threads";
 import ChildProcessAdapter from "./adapters/child_process";
 import parseArgv = require("minimist");
 import { clone, declone } from "@hyurl/structured-clone";
+import orderBy = require("lodash/orderBy");
 
 
 const Module: new () => NodeJS.Module = Object.getPrototypeOf(module).constructor;
 const nativeErrorCloneSupport = parseFloat(process.versions.v8) >= 7.7;
+const lastTick = Symbol("lastTick");
 const pool: Worker[] = [];
 const registry: Function[] = [];
 const uids = sequid(-1, true);
@@ -24,6 +26,9 @@ const tasks = new Map<number, {
 
 let WorkerThreadsAdapter: Adapter = null;
 let adapter: Adapter = null;
+let entryFile: string = void 0;
+let workerOptions: Parameters<Adapter["fork"]>[1] = null;
+let maxWorkers: number = 1;
 let port: {
     on: (event: "message", handle: (msg: any) => void) => void
 } = null;
@@ -141,16 +146,15 @@ async function forkWorker(
     let worker = await adapter.fork(filename, options);
 
     pool.push(worker);
-    worker.on("message", async (res: [number, Error, any]) => {
-        // Check signature
-        if (!Array.isArray(res) ||
-            res.length !== 3 ||
-            typeof res[0] !== "number" ||
-            typeof res[1] !== "object") {
+    worker[lastTick] = Date.now();
+    worker.on("message", async (msg: any) => {
+        if (msg === "TICK") {
+            worker[lastTick] = Date.now();
+        } else if (!isCallResponse(msg)) {
             return;
         }
 
-        let [uid, err, result] = res;
+        let [uid, err, result] = msg as [number, Error, any];
         let task = tasks.get(uid);
 
         // If the task exists, resolve or reject it, and delete it from the
@@ -172,7 +176,7 @@ async function forkWorker(
                 }
             }
         }
-    }).once("exit", (code, signal) => {
+    }).once("exit", async (code, signal) => {
         // Remove the worker from the pool once exited.
         let index = pool.indexOf(worker);
         pool.splice(index, 1);
@@ -183,9 +187,25 @@ async function forkWorker(
             !(code === null && signal === "SIGTERM") &&
             !(code === 1 && signal === undefined)
         ) {
-            forkWorker(adapter, filename, options);
+            await forkWorker(adapter, filename, options);
         }
     });
+
+    return worker;
+}
+
+function isCallRequest(msg: any) {
+    return Array.isArray(msg)
+        && typeof msg[0] === "number" // uid
+        && typeof msg[2] === "number" // hash signature of the function
+        && Array.isArray(msg[3]); // arguments
+}
+
+function isCallResponse(msg: any) {
+    return Array.isArray(msg)
+        && msg.length === 3
+        && typeof msg[0] === "number" // uid
+        && typeof msg[1] === "object"; // error or null
 }
 
 function isFunction(fn: any) {
@@ -234,13 +254,25 @@ export async function go<R, A extends any[] = any[]>(
     }
 
     let uid = uids.next().value;
-    let worker = pool[uid % pool.length];
     let target: number | string = registry.indexOf(fn);
+
+    // Choose the most recent responsive worker.
+    let worker = orderBy(pool, lastTick, "desc")[0];
 
     // If the registry doesn't contain the function, transfer it as plain text,
     // so the worker can recreate it to a function and try to perform the task.
     if (target === -1) {
         target = fn.toString();
+    }
+
+    // If the last tick time has not been refreshed for a second, that means
+    // the worker is blocked and can no longer processing any other incoming
+    // tasks. And if the pool is not full, we can fork a new worker to process
+    // the task.
+    if (!worker || (
+        worker[lastTick] + 1000 < Date.now() && pool.length < maxWorkers
+    )) {
+        worker = await forkWorker(adapter, entryFile, workerOptions);
     }
 
     return new Promise<any>((resolve, reject) => {
@@ -324,7 +356,7 @@ export namespace go {
          */
         filename?: string;
         /**
-         * The number of workers needed to be forked, by default, use
+         * The max number of workers needed to be forked, by default, use
          * `os.cpus().length`.
          */
         workers?: number;
@@ -386,16 +418,18 @@ export namespace go {
             useNativeClone = isWorkerThreadsAdapter && nativeErrorCloneSupport;
         }
 
-        filename = await resolveEntryFile(filename);
-        await Promise.all(
-            new Array(workers).fill(forkWorker(adapter, filename, {
-                execArgv,
-                workerData: clone(workerData, isWorkerThreadsAdapter),
-                stdin,
-                stdout,
-                stderr
-            }))
-        );
+        // Cache the configurations.
+        maxWorkers = workers;
+        entryFile = await resolveEntryFile(filename);
+        workerOptions = {
+            execArgv,
+            workerData: clone(workerData, isWorkerThreadsAdapter),
+            stdin,
+            stdout,
+            stderr
+        };
+
+        return forkWorker(adapter, entryFile, workerOptions);
     }
 
     /** Terminates all worker threads. */
@@ -413,16 +447,12 @@ if (!isMainThread) {
     // In the worker thread, listens message from the main thread, if
     // the message signature matches the task request, execute the task.
     type CallMessage = [number, number | string, number, any[]];
-    port.on("message", async (msg: CallMessage) => {
+    port.on("message", async (msg: any) => {
         // Check signature
-        if (!Array.isArray(msg) ||
-            typeof msg[0] !== "number" ||
-            typeof msg[2] !== "number" ||
-            !Array.isArray(msg[3])) {
+        if (!isCallRequest(msg))
             return;
-        }
 
-        let [uid, target, signature, args] = msg;
+        let [uid, target, signature, args] = msg as CallMessage;
         let fn: Function;
 
         try {
@@ -466,5 +496,13 @@ if (!isMainThread) {
     });
 
     // Notify the main thread the worker is ready.
-    setImmediate(() => adapter.send("ready"));
+    setImmediate(() => adapter.send("READY"));
+
+    // Continuously notify the main thread that the worker is responsive.
+    // If the worker is however blocked, it will failed to send the notification
+    // message, so the main thread can detect and know that the worker is not
+    // idle and may fork new workers if needed.
+    setInterval(() => {
+        adapter.send("TICK");
+    }, 100);
 }

@@ -65,9 +65,7 @@ if (isMainThread) {
         before(async () => {
             await go.start({
                 filename: __filename,
-                workers: 1,
                 workerData: { foo: "hello", bar: "world", err },
-                // adapter: "child_process"
             });
         });
 

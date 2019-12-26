@@ -107,7 +107,7 @@ namespace go {
          */
         filename?: string;
         /**
-         * The number of workers needed to be forked, by default, use
+         * The max number of workers needed to be forked, by default, use
          * `os.cpus().length`.
          */
         workers?: number;
@@ -200,9 +200,7 @@ if (isMainThread) {
 
 3. Worker threads are only meant to run CPU intensive code, they will not do any
     help for I/O intensive work. Being said so, it is still danger to block the
-    worker thread for too long, this module doesn't have the ability to detect
-    if a thread is hanged and fork more threads, all tasks are delivered to the
-    threads using the round-robin method.
+    worker thread for too long.
 
 ## A Little Tips
 
@@ -219,6 +217,13 @@ If using `child_process` adapter, this module also prevents debugging port
 conflicts out of box by choosing another available port when detected under
 debug mode, which is a very common headache when it comes to debug
 multi-processing Node.js project.
+
+Before v1.3, this module delivers tasks to the threads using the round-robin
+method and doesn't have the ability to detect if a thread is blocked. This
+behavior has been changed since v1.3, now this module will deliver the task to 
+the most recent responsive thread and can detect and know if the workers are
+blocked, and will try to fork more workers until the pool is full (reach limit
+set by `workers` option).
 
 ## About `go.use()`
 
