@@ -327,8 +327,6 @@ async function handleCallRequest(msg: CallRequest, worker?: Worker) {
     let response: CallResponse;
 
     try {
-        useNativeClone || (args = declone(args));
-
         if (typeof target === "string") {
             // If the target is sent a string, that means an
             // unregistered function has been passed to the worker
@@ -357,9 +355,8 @@ async function handleCallRequest(msg: CallRequest, worker?: Worker) {
             }
         }
 
-        let result = await fn(...args);
-        result = clone(result, useNativeClone);
-        response = [uid, null, result];
+        useNativeClone || (args = declone(args));
+        response = [uid, null, clone(await fn(...args), useNativeClone)];
     } catch (err) {
         response = [uid, clone(err, useNativeClone), null];
     }
