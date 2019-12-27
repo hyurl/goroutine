@@ -136,7 +136,7 @@ export async function go<R, A extends any[] = any[]>(
     // tasks. And if the pool is not full, we can fork a new worker to process
     // the task.
     if (!worker || (
-        worker[lastTick] + 1000 < Date.now() && pool.length < maxWorkers
+        pool.length < maxWorkers && Date.now() - worker[lastTick] >= 1000
     )) {
         worker = await forkWorker(adapter, entryFile, workerOptions);
     }
@@ -203,7 +203,7 @@ export namespace go {
             stderr = false
         } = options || {};
         let minWorkers = Array.isArray(workers) ? workers[0] : workers;
-        maxWorkers = Array.isArray(workers) ? workers[0] : workers;
+        maxWorkers = Array.isArray(workers) ? workers[1] : workers;
         entryFile = await resolveEntryFile(filename);
 
         if (minWorkers < 1) {
