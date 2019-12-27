@@ -4,20 +4,25 @@ import { runInThisContext } from 'vm';
 import { pathExists, readFile } from 'fs-extra';
 import sequid from "sequid";
 import hash = require("string-hash");
-import { Adapter, Worker } from './headers';
+import { Adapter, Worker, GoroutineOptions } from './headers';
 import { ChildProcess } from 'child_process';
 import { Worker as ThreadWorker } from "worker_threads";
 import ChildProcessAdapter from "./adapters/child_process";
 import parseArgv = require("minimist");
 import { clone, declone } from "@hyurl/structured-clone";
 import orderBy = require("lodash/orderBy");
+export { GoroutineOptions };
 
+
+type CallRequest = [number, number | string, number, any[]];
+type CallResponse = [number, Error, any];
 
 const Module: new () => NodeJS.Module = Object.getPrototypeOf(module).constructor;
 const nativeErrorCloneSupport = parseFloat(process.versions.v8) >= 7.7;
 const lastTick = Symbol("lastTick");
 const pool: Worker[] = [];
-const registry: Function[] = [];
+const registry: ((...args: any[]) => any)[] = [];
+const includes: (NodeJS.Module | object)[] = [];
 const uids = sequid(-1, true);
 const tasks = new Map<number, {
     resolve(result: any): void;
@@ -96,6 +101,170 @@ export const threadId = workerId;
 export const workerData = _workerData || null;
 
 
+/**
+ * Runs a function in a parallel worker thread.
+ * @param fn If the function is registered via `go.register()`, then it can be
+ *  called safely with the scope context. Otherwise, it will be sent to the
+ *  worker thread as a plain string and regenerated, which will lose the context.
+ * @param args A list of data passed to `fn` as arguments.
+ */
+export async function go<R, A extends any[] = any[]>(
+    fn: (...args: A) => R,
+    ...args: A
+): Promise<R extends Promise<infer U> ? U : R> {
+    ensureCallInMainThread("go");
+    ensureFunctionArg("go", fn);
+
+    if (!isGoroutineRunning()) {
+        return fn.apply(void 0, args);
+    }
+
+    let uid = uids.next().value;
+    let target: number | string = registry.indexOf(fn);
+
+    // Choose the most recent responsive worker.
+    let worker = orderBy(pool, lastTick, "desc")[0];
+
+    // If the registry doesn't contain the function, transfer it as plain text,
+    // so the worker can recreate it to a function and try to perform the task.
+    if (target === -1) {
+        target = fn.toString();
+    }
+
+    // If the last tick time has not been refreshed for a second, that means
+    // the worker is blocked and can no longer processing any other incoming
+    // tasks. And if the pool is not full, we can fork a new worker to process
+    // the task.
+    if (!worker || (
+        worker[lastTick] + 1000 < Date.now() && pool.length < maxWorkers
+    )) {
+        worker = await forkWorker(adapter, entryFile, workerOptions);
+    }
+
+    return new Promise<any>((resolve, reject) => {
+        let msg: CallRequest = [
+            uid,
+            target,
+            hash(String(fn)),
+            clone(args, useNativeClone)
+        ];
+
+        // Add the task.
+        tasks.set(uid, { resolve, reject });
+
+        // Transfer the task message to the worker.
+        if (isWorkerThreadsAdapter) {
+            (<ThreadWorker>worker).postMessage(msg);
+        } else {
+            (<ChildProcess>worker).send(msg);
+        }
+    });
+}
+
+export namespace go {
+    /** Registers a function that can be used in the worker thread. */
+    export function register<T extends (...args: any[]) => any>(fn: T): T {
+        ensureFunctionArg("register", fn);
+        let index = registry.indexOf(fn);
+        index === -1 && registry.push(fn);
+        return fn;
+    }
+
+    /**
+     * Automatically registers all functions exported by a module. (lazy-load)
+     */
+    export function use(module: NodeJS.Module): void;
+    export function use(exports: any): void;
+    export function use(module: any) {
+        if (module instanceof Module) {
+            let index = includes.indexOf(module);
+            index === -1 && includes.push(module);
+        } else if (module && typeof module === "object") {
+            let index = includes.indexOf(module);
+            index === -1 && includes.push(module);
+        } else {
+            throw new TypeError(
+                "Argument for go.use() must be a Node.js module or its exports");
+        }
+    }
+
+    /** Starts the goroutine and forks necessary workers. */
+    export async function start(options?: GoroutineOptions) {
+        ensureCallInMainThread("go.start");
+
+        let {
+            filename = void 0,
+            adapter: _adapter = void 0,
+            workers = cpus().length,
+            execArgv = [],
+            workerData = null,
+            stdin = false,
+            stdout = false,
+            stderr = false
+        } = options || {};
+        let minWorkers = Array.isArray(workers) ? workers[0] : workers;
+        maxWorkers = Array.isArray(workers) ? workers[0] : workers;
+        entryFile = await resolveEntryFile(filename);
+
+        if (minWorkers < 1) {
+            throw new RangeError("Worker numbers must not be smaller than 1");
+        }
+
+        // If `adapter` options is specified `child_process` when start up,
+        // then always use `ChildProcessAdapter`, otherwise automatically
+        // choose the ideal one from `WorkerThreadsAdapter` and
+        // `ChildProcessAdapter`.
+        if (_adapter === "child_process" || WorkerThreadsAdapter === null) {
+            adapter = ChildProcessAdapter;
+        } else {
+            adapter = WorkerThreadsAdapter;
+            isWorkerThreadsAdapter = true;
+            useNativeClone = isWorkerThreadsAdapter && nativeErrorCloneSupport;
+        }
+
+        // Cache the configurations.
+        workerOptions = {
+            execArgv,
+            workerData: clone(workerData, isWorkerThreadsAdapter),
+            stdin,
+            stdout,
+            stderr
+        };
+
+        await Promise.all(new Array<Promise<Worker>>(minWorkers).fill(
+            forkWorker(adapter, entryFile, workerOptions)
+        ));
+    }
+
+    /** Terminates all worker threads. */
+    export async function terminate() {
+        ensureCallInMainThread("go.terminate");
+        await Promise.all(pool.map(adapter.terminate));
+    }
+
+    /** Returns the number of workers in the pool. */
+    export async function workers(): Promise<number> {
+        if (isMainThread) {
+            return pool.length;
+        } else {
+            return new Promise<number>((resolve, reject) => {
+                let uid = uids.next().value;
+                let fn = () => pool.length;
+                let msg: CallRequest = [
+                    uid,
+                    String(fn),
+                    hash(String(fn)),
+                    clone([], useNativeClone)
+                ];
+
+                // Add the task.
+                tasks.set(uid, { resolve, reject });
+                adapter.send(msg);
+            });
+        }
+    }
+}
+
 async function resolveEntryFile(filename?: string): Promise<string> {
     if (filename) {
         return path.resolve(process.cwd(), filename);
@@ -138,6 +307,74 @@ async function resolveEntryFile(filename?: string): Promise<string> {
     }
 }
 
+async function handleCallResponse(msg: CallResponse) {
+    let [uid, err, result] = msg;
+    let task = tasks.get(uid);
+
+    // If the task exists, resolve or reject it, and delete it from the
+    // stack.
+    if (task) {
+        tasks.delete(uid);
+        useNativeClone || (err = declone(err));
+        useNativeClone || (result = declone(result));
+        err ? task.reject(err) : task.resolve(result);
+    }
+}
+
+async function handleCallRequest(msg: CallRequest, worker?: Worker) {
+    let [uid, target, signature, args] = msg;
+    let fn: Function;
+    let response: CallResponse;
+
+    try {
+        useNativeClone || (args = declone(args));
+
+        if (typeof target === "string") {
+            // If the target is sent a string, that means an
+            // unregistered function has been passed to the worker
+            // thread, should try to recreate the function and use
+            // it to handle the task.
+            // Use `()` to wrap the code in order to let
+            // `runInThisContext` return the result evaluated with a
+            // function definition.
+            if (isMainThread) {
+                fn = eval("(" + target + ")");
+            } else {
+                fn = runInThisContext("(" + target + ")");
+            }
+        } else {
+            fn = registry[target];
+
+            // There is a slight chance that the main thread and
+            // worker thread doesn't share the same copy of registry.
+            // If detected, throw an error to prevent running the
+            // malformed function.
+            if (!fn || signature !== hash(String(fn))) {
+                throw new Error(
+                    "Goroutine registry malformed, function call " +
+                    "cannot be performed"
+                );
+            }
+        }
+
+        let result = await fn(...args);
+        result = clone(result, useNativeClone);
+        response = [uid, null, result];
+    } catch (err) {
+        response = [uid, clone(err, useNativeClone), null];
+    }
+
+    if (isMainThread && worker) {
+        if (isWorkerThreadsAdapter) {
+            (<ThreadWorker>worker).postMessage(response);
+        } else {
+            (<ChildProcess>worker).send(response);
+        }
+    } else {
+        adapter.send(response);
+    }
+}
+
 async function forkWorker(
     adapter: Adapter,
     ...args: Parameters<Adapter["fork"]>
@@ -150,31 +387,10 @@ async function forkWorker(
     worker.on("message", async (msg: any) => {
         if (msg === "TICK") {
             worker[lastTick] = Date.now();
-        } else if (!isCallResponse(msg)) {
-            return;
-        }
-
-        let [uid, err, result] = msg as [number, Error, any];
-        let task = tasks.get(uid);
-
-        // If the task exists, resolve or reject it, and delete it from the
-        // stack.
-        if (task) {
-            tasks.delete(uid);
-
-            if (err) {
-                if (useNativeClone) {
-                    task.reject(err);
-                } else {
-                    task.reject(declone(err));
-                }
-            } else {
-                if (useNativeClone) {
-                    task.resolve(result);
-                } else {
-                    task.resolve(declone(result));
-                }
-            }
+        } else if (isCallResponse(msg)) {
+            await handleCallResponse(msg);
+        } else if (isCallRequest(msg)) {
+            await handleCallRequest(msg, worker);
         }
     }).once("exit", async (code, signal) => {
         // Remove the worker from the pool once exited.
@@ -226,272 +442,53 @@ function ensureCallInMainThread(name: string) {
     }
 }
 
-
-/**
- * Runs a function in a parallel worker thread.
- * @param fn If the function is registered via `go.register()`, then it can be
- *  called safely with the scope context. Otherwise, it will be sent to the
- *  worker thread as a plain string and regenerated, which will lose the context.
- * @param args A list of data passed to `fn` as arguments.
- */
-export async function go<R, A extends any[] = any[]>(
-    fn: (...args: A) => R,
-    ...args: A
-): Promise<R extends Promise<infer U> ? U : R> {
-    ensureCallInMainThread("go");
-    ensureFunctionArg("go", fn);
-
+function isGoroutineRunning() {
     if (pool.length === 0) {
         if (!noWorkerWarningEmitted) {
             noWorkerWarningEmitted = true;
             process.emitWarning(
-                "Goroutine is not working, " +
+                "Goroutine is not running, " +
                 "function call will be handled in the main thread"
             );
         }
 
-        return fn.apply(void 0, args);
+        return false;
+    } else {
+        return true;
     }
-
-    let uid = uids.next().value;
-    let target: number | string = registry.indexOf(fn);
-
-    // Choose the most recent responsive worker.
-    let worker = orderBy(pool, lastTick, "desc")[0];
-
-    // If the registry doesn't contain the function, transfer it as plain text,
-    // so the worker can recreate it to a function and try to perform the task.
-    if (target === -1) {
-        target = fn.toString();
-    }
-
-    // If the last tick time has not been refreshed for a second, that means
-    // the worker is blocked and can no longer processing any other incoming
-    // tasks. And if the pool is not full, we can fork a new worker to process
-    // the task.
-    if (!worker || (
-        worker[lastTick] + 1000 < Date.now() && pool.length < maxWorkers
-    )) {
-        worker = await forkWorker(adapter, entryFile, workerOptions);
-    }
-
-    return new Promise<any>((resolve, reject) => {
-        let msg = [
-            uid,
-            target,
-            hash(String(fn)),
-            clone(args, useNativeClone)
-        ];
-
-        // Add the task.
-        tasks.set(uid, { resolve, reject });
-
-        // Transfer the task message to the worker.
-        if (isWorkerThreadsAdapter) {
-            (<ThreadWorker>worker).postMessage(msg);
-        } else {
-            (<ChildProcess>worker).send(msg);
-        }
-    });
 }
 
-export namespace go {
-    const includes: (NodeJS.Module | object)[] = [];
 
-    // Resolve lazy load functions.
-    setImmediate(() => {
-        for (let module of includes) {
-            let exports: any;
+// Resolve lazy-load functions.
+setImmediate(() => {
+    for (let module of includes) {
+        let exports: any;
 
-            if (module instanceof Module) {
-                exports = module.exports;
-            } else if (typeof module === "object") {
-                exports = module;
-            }
-
-            if (typeof exports === "object") {
-                for (let x in exports) {
-                    if (Object.prototype.hasOwnProperty.call(exports, x) &&
-                        isFunction(exports[x])) {
-                        register(exports[x]);
-                    }
-                }
-            } else if (isFunction(exports)) {
-                register(exports);
-            }
-        }
-    });
-
-    /** Registers a function that can be used in the worker thread. */
-    export function register<T extends Function>(fn: T): T {
-        ensureFunctionArg("register", fn);
-        let index = registry.indexOf(fn);
-        index === -1 && registry.push(fn);
-        return fn;
-    }
-
-    /**
-     * Automatically registers all functions exported by a module. (lazy-load)
-     */
-    export function use(module: NodeJS.Module): void;
-    export function use(exports: any): void;
-    export function use(module: any) {
         if (module instanceof Module) {
-            let index = includes.indexOf(module);
-            index === -1 && includes.push(module);
-        } else if (module && typeof module === "object") {
-            let index = includes.indexOf(module);
-            index === -1 && includes.push(module);
-        } else {
-            throw new TypeError(
-                "Argument for go.use() must be a Node.js module or its exports");
-        }
-    }
-
-    /** Starts the goroutine and forks necessary workers. */
-    export async function start(options?: {
-        /**
-         * The entry script file of the worker threads, by default, it will be
-         * automatically resolved.
-         */
-        filename?: string;
-        /**
-         * The max number of workers needed to be forked, by default, use
-         * `os.cpus().length`.
-         */
-        workers?: number;
-        /**
-         * By default, use `worker_threads` in the supported Node.js version and
-         * fallback to `child_process` if not supported.
-         */
-        adapter?: "worker_threads" | "child_process";
-        /**
-         * List of node CLI options passed to the worker. By default, options
-         * will be inherited from the parent thread.
-         */
-        execArgv?: string[];
-        /** An arbitrary JavaScript value passed to the worker. */
-        workerData?: any;
-        /**
-         * If this is set to `true`, then `worker.stdin` will provide a writable
-         * stream whose contents will appear as `process.stdin` inside the
-         * Worker. By default, no data is provided.
-         */
-        stdin?: boolean;
-        /**
-         * If this is set to `true`, then `worker.stdout` will not automatically
-         * be piped through to `process.stdout` in the parent.
-         */
-        stdout?: boolean;
-        /**
-         * If this is set to `true`, then `worker.stderr` will not automatically
-         * be piped through to `process.stderr` in the parent.
-         */
-        stderr?: boolean;
-    }) {
-        ensureCallInMainThread("go.start");
-
-        let {
-            filename = void 0,
-            adapter: _adapter = void 0,
-            workers = cpus().length,
-            execArgv = [],
-            workerData = null,
-            stdin = false,
-            stdout = false,
-            stderr = false
-        } = options || {};
-
-        if (workers < 1) {
-            throw new RangeError("'workers' option must not be smaller than 1");
+            exports = module.exports;
+        } else if (typeof module === "object") {
+            exports = module;
         }
 
-        // If `adapter` options is specified `child_process` when start up,
-        // then always use `ChildProcessAdapter`, otherwise automatically
-        // choose the ideal one from `WorkerThreadsAdapter` and
-        // `ChildProcessAdapter`.
-        if (_adapter === "child_process" || WorkerThreadsAdapter === null) {
-            adapter = ChildProcessAdapter;
-        } else {
-            adapter = WorkerThreadsAdapter;
-            isWorkerThreadsAdapter = true;
-            useNativeClone = isWorkerThreadsAdapter && nativeErrorCloneSupport;
+        if (typeof exports === "object") {
+            for (let x in exports) {
+                if (Object.prototype.hasOwnProperty.call(exports, x) &&
+                    isFunction(exports[x])) {
+                    go.register(exports[x]);
+                }
+            }
+        } else if (isFunction(exports)) { // style `module.exports = () => {}`
+            go.register(exports);
         }
-
-        // Cache the configurations.
-        maxWorkers = workers;
-        entryFile = await resolveEntryFile(filename);
-        workerOptions = {
-            execArgv,
-            workerData: clone(workerData, isWorkerThreadsAdapter),
-            stdin,
-            stdout,
-            stderr
-        };
-
-        return forkWorker(adapter, entryFile, workerOptions);
     }
-
-    /** Terminates all worker threads. */
-    export async function terminate() {
-        ensureCallInMainThread("go.terminate");
-        await Promise.all(pool.map(adapter.terminate));
-    }
-}
-
-
-export default go;
-
+});
 
 if (!isMainThread) {
-    // In the worker thread, listens message from the main thread, if
-    // the message signature matches the task request, execute the task.
-    type CallMessage = [number, number | string, number, any[]];
     port.on("message", async (msg: any) => {
-        // Check signature
-        if (!isCallRequest(msg))
-            return;
-
-        let [uid, target, signature, args] = msg as CallMessage;
-        let fn: Function;
-
-        try {
-            if (!useNativeClone) {
-                args = declone(args);
-            }
-
-            if (typeof target === "string") {
-                // If the target is sent a string, that means an
-                // unregistered function has been passed to the worker
-                // thread, should try to recreate the function and use
-                // it to handle the task.
-                // Use `()` to wrap the code in order to let
-                // `runInThisContext` return the result evaluated with a
-                // function definition.
-                fn = runInThisContext("(" + target + ")");
-            } else {
-                fn = registry[target];
-
-                // There is a slight chance that the main thread and
-                // worker thread doesn't share the same copy of registry.
-                // If detected, throw an error to prevent running the
-                // malformed function.
-                if (!fn || signature !== hash(String(fn))) {
-                    throw new Error(
-                        "Goroutine registry malformed, function call " +
-                        "cannot be performed"
-                    );
-                }
-            }
-
-            let result = await fn(...args);
-
-            result = clone(result, useNativeClone);
-            adapter.send([uid, null, result]);
-        } catch (err) {
-            // Use err2obj to convert the error so that it can be
-            // serialized and sent through the channel.
-            adapter.send([uid, clone(err, useNativeClone), null]);
+        if (isCallRequest(msg)) {
+            await handleCallRequest(msg);
+        } else if (isCallResponse(msg)) {
+            await handleCallResponse(msg);
         }
     });
 
@@ -506,3 +503,7 @@ if (!isMainThread) {
         adapter.send("TICK");
     }, 100);
 }
+
+
+export default go;
+global["go"] = go;

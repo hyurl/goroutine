@@ -84,7 +84,7 @@ const workerData: any;
  *  worker thread as a plain string and regenerated, which will lose the context.
  * @param args A list of data passed to `fn` as arguments.
  */
-declare async function go<R, A extends any[] = any[]>(
+function go<R, A extends any[] = any[]>(
     fn: (...args: A) => R,
     ...args: A
 ): Promise<R extends Promise<infer U> ? U : R>;
@@ -96,54 +96,61 @@ namespace go {
     /**
      * Automatically registers all functions exported by a module. (lazy-load)
      */
-    export function use(module: NodeJS.Module): void;
-    export function use(exports: any): void;
+    function use(module: NodeJS.Module): void;
+    function use(exports: any): void;
 
     /** Starts the goroutine and forks necessary workers. */
-    function start(options?: {
-        /**
-         * The entry script file of the worker threads, by default, it will be
-         * automatically resolved.
-         */
-        filename?: string;
-        /**
-         * The max number of workers needed to be forked, by default, use
-         * `os.cpus().length`.
-         */
-        workers?: number;
-        /**
-         * By default, use `worker_threads` in the supported Node.js version and
-         * fallback to `child_process` if not supported.
-         */
-        adapter?: "worker_threads" | "child_process";
-        /**
-         * List of node CLI options passed to the worker. By default, options
-         * will be inherited from the parent thread.
-         */
-        execArgv?: string[];
-        /** An arbitrary JavaScript value passed to the worker. */
-        workerData?: any;
-        /**
-         * If this is set to `true`, then `worker.stdin` will provide a writable
-         * stream whose contents will appear as `process.stdin` inside the
-         * Worker. By default, no data is provided.
-         */
-        stdin?: boolean;
-        /**
-         * If this is set to `true`, then `worker.stdout` will not automatically
-         * be piped through to `process.stdout` in the parent.
-         */
-        stdout?: boolean;
-        /**
-         * If this is set to `true`, then `worker.stderr` will not automatically
-         * be piped through to `process.stderr` in the parent.
-         */
-        stderr?: boolean;
-    }): Promise<void>;
+    function start(options?: GoroutineOptions): Promise<void>;
 
     /** Terminates all worker threads. */
     function terminate(): Promise<void>;
+
+    /** Returns the number of workers in the pool. */
+    function workers(): Promise<number>;
 }
+
+interface GoroutineOptions {
+    /**
+     * The entry script file of the worker threads, by default, it will be
+     * automatically resolved.
+     */
+    filename?: string;
+    /**
+     * The number of workers needed to be forked, by default, use
+     * `os.cpus().length`. If an array is provided, it sets the minimum and
+     * maximum number of workers, and goroutine will automatically scale
+     * when necessary.
+     */
+    workers?: number | [number, number];
+    /**
+     * By default, use `worker_threads` in the supported Node.js version and
+     * fallback to `child_process` if not supported.
+     */
+    adapter?: "worker_threads" | "child_process";
+    /**
+     * List of node CLI options passed to the worker. By default, options
+     * will be inherited from the parent thread.
+     */
+    execArgv?: string[];
+    /** An arbitrary JavaScript value passed to the worker. */
+    workerData?: any;
+    /**
+     * If this is set to `true`, then `worker.stdin` will provide a writable
+     * stream whose contents will appear as `process.stdin` inside the
+     * Worker. By default, no data is provided.
+     */
+    stdin?: boolean;
+    /**
+     * If this is set to `true`, then `worker.stdout` will not automatically
+     * be piped through to `process.stdout` in the parent.
+     */
+    stdout?: boolean;
+    /**
+     * If this is set to `true`, then `worker.stderr` will not automatically
+     * be piped through to `process.stderr` in the parent.
+     */
+    stderr?: boolean;
+};
 ```
 
 ## Limitations

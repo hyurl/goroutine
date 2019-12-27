@@ -7,7 +7,6 @@ const FRON = require("fron");
 const util = require("util");
 
 go.use(module);
-
 go.register(FRON.parseToken);
 
 go.register(sum);
@@ -65,6 +64,7 @@ if (isMainThread) {
         before(async () => {
             await go.start({
                 filename: __filename,
+                workers: [1, 8],
                 workerData: { foo: "hello", bar: "world", err },
             });
         });
@@ -188,6 +188,13 @@ if (isMainThread) {
         it("should automatically register a function from the exports", async () => {
             let result = await go(exports.lazyFunc);
             assert.strictEqual(result, "Lazy load function");
+        });
+
+        it("should get the size of the worker pool", async () => {
+            let num1 = await go.workers();
+            let num2 = await go(async () => go.workers());
+            assert.strictEqual(num1, 1);
+            assert.strictEqual(num2, 1);
         });
 
         it("should call function when Goroutine is not open", async () => {

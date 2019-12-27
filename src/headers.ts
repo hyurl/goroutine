@@ -8,3 +8,62 @@ export interface Adapter {
     terminate(worker: Worker): Promise<void>;
     send(msg: any): void;
 }
+
+export interface GoroutineOptions {
+    /**
+     * The entry script file of the worker threads, by default, it will be
+     * automatically resolved.
+     */
+    filename?: string;
+    /**
+     * The number of workers needed to be forked, by default, use
+     * `os.cpus().length`. If an array is provided, it sets the minimum and
+     * maximum number of workers, and goroutine will automatically scale
+     * when necessary.
+     */
+    workers?: number | [number, number];
+    /**
+     * By default, use `worker_threads` in the supported Node.js version and
+     * fallback to `child_process` if not supported.
+     */
+    adapter?: "worker_threads" | "child_process";
+    /**
+     * List of node CLI options passed to the worker. By default, options
+     * will be inherited from the parent thread.
+     */
+    execArgv?: string[];
+    /** An arbitrary JavaScript value passed to the worker. */
+    workerData?: any;
+    /**
+     * If this is set to `true`, then `worker.stdin` will provide a writable
+     * stream whose contents will appear as `process.stdin` inside the
+     * Worker. By default, no data is provided.
+     */
+    stdin?: boolean;
+    /**
+     * If this is set to `true`, then `worker.stdout` will not automatically
+     * be piped through to `process.stdout` in the parent.
+     */
+    stdout?: boolean;
+    /**
+     * If this is set to `true`, then `worker.stderr` will not automatically
+     * be piped through to `process.stderr` in the parent.
+     */
+    stderr?: boolean;
+};
+
+declare global {
+    function go<R, A extends any[] = any[]>(
+        fn: (...args: A) => R,
+        ...args: A
+    ): Promise<R extends Promise<infer U> ? U : R>;
+
+    namespace go {
+        function register<T extends Function>(fn: T): T;
+        function use(module: NodeJS.Module): void;
+        function use(exports: any): void;
+        function start(options?: GoroutineOptions): Promise<void>;
+        function terminate(): Promise<void>;
+        function workers(): Promise<number>;
+    }
+}
