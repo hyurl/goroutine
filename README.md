@@ -39,7 +39,7 @@ if (isMainThread) {
 }
 ```
 
-## How Does It Work?
+## How It Works?
 
 You may think when calling the `go()` function, it will send the function string
 to the worker thread and regenerate the function (most implementations on NPM
@@ -47,19 +47,19 @@ actually do this, which is very bad), well, you're WRONG. Doing so will lose the
 context of where the function is defined, and the above example will never work.
 But it does work.
 
-**So how does it actually work?** You may have noticed that, in the above
+**So how does it actually work?** You may have noticed, that in the above
 example, before calling `markdown2html` function, I used `go.register()` on
-that function. This is the trick, simple, but it gets things done. When calling
-`go.register()`, it actually put the function in a internal array of registry.
-And since this registry is shared between the main thread and the worker thread,
-when calling `go(markdown2html)`, the main thread only sends the index of the
-function to the worker thread, and let itself to find the function from the
-registry, then call the function with additional arguments.
+that function. This is the trick, simple and straight. When calling
+`go.register()`, it actually put the function in a internal registry. And since
+this registry is shared between the main thread and the worker thread, when
+calling `go(markdown2html)`, the main thread will send the index of the
+function to the worker thread, which will then find the function from the
+registry, and call the function with cloned arguments.
 
 ## API
 
 There are very few functions of this module, many of them you've seen from the
-above example. But it would be more polite to list out all the details.
+above example.
 
 ```ts
 /**
@@ -159,7 +159,7 @@ Apparently there are some limitations in this module, since neither
 `worker_threads` nor `child_process` in Node.js shares address space between the
 main thread and the workers.
 
-So when using this module, the following rules should be particularly aware.
+So when using this module, the following rules must be particularly aware.
 
 1. `go.register()` must be called at where both the main thread and worker
     threads can access. For instance, this example will not work, never do this:
@@ -195,19 +195,28 @@ if (isMainThread) {
     2. Date
     3. RegExp
     4. ArrayBuffer
-    5. ArrayBufferView (typed arrays, `DataView` and `*Buffer`)
+    5. ArrayBufferView (typed arrays, `DataView` and `Buffer`<sup>[1](#note-1)</sup>)
     6. Array
     7. Object
     8. Map
     9. Set
-    10. Error (native errors, AssertionError, and any error type on the global object)
+    10. Error<sup>[2](#note-2)</sup> (native errors, AssertionError, and any error type on the global
+        object)
 
-    (NOTE: `Buffer` may be transferred to Uint8Array when using native HTML
-    structured clone algorithm.)
+    <p><small id="note-1">
+    1. <code>Buffer</code> may be transferred to Uint8Array when using native
+    HTML structured clone algorithm.
+    </small></p>
 
-3. Worker threads are only meant to run CPU intensive code, they will not do any
-    help for I/O intensive work. Being said so, it is still danger to block the
-    worker thread for too long.
+    <p><small id="note-2">
+    2. Only native errors are guaranteed to be supported by native HTML
+    structured clone algorithm, other error types are only supported by the
+    custom clone algorithm.
+    </small></p>
+
+3. Worker threads are only meant to run CPU intensive code, they will not do
+    much help for I/O intensive work. Being said so, it is still dangerous to
+    block the worker thread pool for too long.
 
 ## A Little Tips
 
@@ -256,8 +265,8 @@ export default function () {
 
 There are three styles to call the `go.use()`:
 
-1. `go.use(this)` More often used, and straight forward.
-2. `go.use(exports)` or `go.use(module.exports)` Same as above, less often used.
-3. `go.use(module)` Most of the time this style effects the same as the above
+1. `go.use(this)`: More often used, and straight forward.
+2. `go.use(exports)` or `go.use(module.exports)`: Same as above, less often used.
+3. `go.use(module)`: Most of the time this style effects the same as the above
     ones, however, it supports the export style of `module.exports = () => {}`,
     which is not supported by the above styles.
