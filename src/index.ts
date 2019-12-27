@@ -409,6 +409,7 @@ async function forkWorker(
 
 function isCallRequest(msg: any) {
     return Array.isArray(msg)
+        && msg.length === 4
         && typeof msg[0] === "number" // uid
         && typeof msg[2] === "number" // hash signature of the function
         && Array.isArray(msg[3]); // arguments
