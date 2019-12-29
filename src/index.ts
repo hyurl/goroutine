@@ -442,7 +442,7 @@ function ensureCallInMainThread(name: string) {
 
 function isGoroutineRunning() {
     if (pool.length === 0) {
-        if (!noWorkerWarningEmitted) {
+        if (isMainThread && !noWorkerWarningEmitted) {
             noWorkerWarningEmitted = true;
             process.emitWarning(
                 "Goroutine is not running, " +
