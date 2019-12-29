@@ -231,8 +231,8 @@ export namespace go {
             stderr
         };
 
-        await Promise.all(new Array<Promise<Worker>>(minWorkers).fill(
-            forkWorker(adapter, entryFile, workerOptions)
+        await Promise.all(new Array(minWorkers).fill(void 0).map(
+            () => forkWorker(adapter, entryFile, workerOptions)
         ));
     }
 
