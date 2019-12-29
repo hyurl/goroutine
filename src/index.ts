@@ -34,6 +34,7 @@ let adapter: Adapter = null;
 let entryFile: string = void 0;
 let workerOptions: Parameters<Adapter["fork"]>[1] = null;
 let maxWorkers: number = 1;
+let loadBalanceMethod: "round-robin" | "least-time";
 let port: {
     on: (event: "message", handle: (msg: any) => void) => void
 } = null;
@@ -121,9 +122,14 @@ export async function go<R, A extends any[] = any[]>(
 
     let uid = uids.next().value;
     let target: number | string = registry.indexOf(fn);
+    let worker: Worker;
 
-    // Choose the most recent responsive worker.
-    let worker = orderBy(pool, lastTick, "desc")[0];
+    if (loadBalanceMethod === "least-time" || pool.length < maxWorkers) {
+        // Choose the most recent responsive worker.
+        worker = orderBy(pool, lastTick, "desc")[0];
+    } else {
+        worker = pool[uid % pool.length];
+    }
 
     // If the registry doesn't contain the function, transfer it as plain text,
     // so the worker can recreate it to a function and try to perform the task.
@@ -196,18 +202,27 @@ export namespace go {
             filename = void 0,
             adapter: _adapter = void 0,
             workers = cpus().length,
+            method = void 0,
             execArgv = [],
             workerData = null,
             stdin = false,
             stdout = false,
             stderr = false
         } = options || {};
-        let minWorkers = Array.isArray(workers) ? workers[0] : workers;
-        maxWorkers = Array.isArray(workers) ? workers[1] : workers;
-        entryFile = await resolveEntryFile(filename);
+        let dynamicWorkers = Array.isArray(workers);
+        let minWorkers = dynamicWorkers ? workers[0] : workers;
 
         if (minWorkers < 1) {
             throw new RangeError("Worker numbers must not be smaller than 1");
+        }
+
+        maxWorkers = dynamicWorkers ? workers[1] : workers;
+        entryFile = await resolveEntryFile(filename);
+
+        if (method) {
+            loadBalanceMethod = method;
+        } else {
+            loadBalanceMethod = dynamicWorkers ? "least-time" : "round-robin";
         }
 
         // If `adapter` options is specified `child_process` when start up,

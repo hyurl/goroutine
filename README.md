@@ -123,6 +123,16 @@ interface GoroutineOptions {
      */
     workers?: number | [number, number];
     /**
+     * The load balancing method of how to choose the worker when calling `go()`.
+     * If `workers` is set to a specific number, then `round-robin`
+     * will be used by default; if an array of minimum and maximum number of
+     * workers is set, `least-time` will be used by default.
+     * However, even set `round-robin`, when the `workers` is set an array, the
+     * configured method will not be activated util the pool size reaches the
+     * maximum number of workers.
+     */
+    method?: "round-robin" | "least-time";
+    /**
      * By default, use `worker_threads` in the supported Node.js version and
      * fallback to `child_process` if not supported.
      */
@@ -270,3 +280,33 @@ There are three styles to call the `go.use()`:
 3. `go.use(module)`: Most of the time this style effects the same as the above
     ones, however, it supports the export style of `module.exports = () => {}`,
     which is not supported by the above styles.
+
+## About Load Balance
+
+When calling `go()` function, it delivers the function call to one of the worker
+thread to balance the load. Before v1.3, this module only support constant
+worker numbers, so it uses a straight-forward `round-robin` method, that is, it
+delivers one task to a worker, and the next task to another worker, goes around
+in a circle.
+
+Since v1.3, this module has the ability to detect health and auto-scale workers,
+so it switch the load balancing method to `least-time`, that is, it delivers the
+task to the most recent responsive worker. The worker holds a internal timer to
+constantly notify the main thread whether it's responsive or not, so the main
+thread can order the workers according to their last tick times.
+
+But supporting only one of these methods has drawbacks. So, since v1.4, this
+module now supports both two load balancing methods, and switching them smartly.
+
+If the `workers` option is set to a specific number, all workers are forked at
+once, then `round-robin` method will be used by default, so the tasks can be
+delivered to them in average. However if an array of minimum and maximum number
+of workers is set, the workers will be auto-scaled when necessary, in this case,
+`least-time` method is used by default.
+
+You can force the goroutine to use a specific method, but there is an exception
+of setting `round-robin` when the `workers` is set an array, the configured
+method will only be activated after the pool size reaches the maximum number of
+workers. Because before then, goroutine doesn't know whether it should should
+not scale a new worker if not using the `least-time` method and order the
+workers by their tick times.

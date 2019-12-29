@@ -23,6 +23,16 @@ export interface GoroutineOptions {
      */
     workers?: number | [number, number];
     /**
+     * The load balancing method of how to choose the worker when calling `go()`.
+     * If `workers` is set to a specific number, then `round-robin`
+     * will be used by default; if an array of minimum and maximum number of
+     * workers is set, `least-time` will be used by default.
+     * However, even set `round-robin`, when the `workers` is set an array, the
+     * configured method will not be activated util the pool size reaches the
+     * maximum number of workers.
+     */
+    method?: "round-robin" | "least-time";
+    /**
      * By default, use `worker_threads` in the supported Node.js version and
      * fallback to `child_process` if not supported.
      */
