@@ -3,7 +3,7 @@ import { Adapter } from "../headers";
 import getPort = require("get-port");
 import parseArgv = require("minimist");
 import sequid from "sequid";
-import { clone } from "@hyurl/structured-clone";
+import { serialize } from "@hyurl/structured-clone";
 
 const uids = sequid();
 const argv = parseArgv(process.execArgv);
@@ -36,7 +36,7 @@ export default <Adapter>{
         }
 
         if (workerData) {
-            argv.push(`--worker-data=${JSON.stringify(clone(workerData))}`);
+            argv.push(`--worker-data=${serialize(workerData)}`);
         }
 
         return new Promise((resolve, reject) => {

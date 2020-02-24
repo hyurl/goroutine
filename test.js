@@ -30,6 +30,7 @@ function exists(file) {
 }
 
 let err = new Error("Something went wrong");
+err["foo"] = "extra data";
 
 let throwError = go.register(() => {
     throw err;

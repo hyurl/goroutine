@@ -9,7 +9,7 @@ import { ChildProcess } from 'child_process';
 import { Worker as ThreadWorker } from "worker_threads";
 import ChildProcessAdapter from "./adapters/child_process";
 import parseArgv = require("minimist");
-import { clone, declone } from "@hyurl/structured-clone";
+import { compose, decompose, deserialize } from "@hyurl/structured-clone";
 import orderBy = require("lodash/orderBy");
 export { GoroutineOptions };
 
@@ -53,7 +53,7 @@ if (isWorker) {
     adapter = ChildProcessAdapter;
 
     if (_workerData !== null) {
-        _workerData = declone(JSON.parse(_workerData));
+        _workerData = deserialize(_workerData);
     }
 } else {
     try { // Try to load `worker_threads` module and adapter.
@@ -70,14 +70,7 @@ if (isWorker) {
 
             // HACK, pass `process.argv` to the worker thread.
             process.argv.push(...worker_threads.workerData.argv);
-
-            // If no native error clone support, the custom clone algorithm will
-            // be used instead.
-            if (nativeErrorCloneSupport) {
-                _workerData = worker_threads.workerData.workerData;
-            } else {
-                _workerData = declone(worker_threads.workerData.workerData);
-            }
+            _workerData = decompose(worker_threads.workerData.workerData);
         }
     } catch (e) { }
 }
@@ -152,7 +145,7 @@ export async function go<R, A extends any[] = any[]>(
             uid,
             target,
             hash(String(fn)),
-            clone(args, useNativeClone)
+            compose(args, useNativeClone)
         ];
 
         // Add the task.
@@ -240,7 +233,7 @@ export namespace go {
         // Cache the configurations.
         workerOptions = {
             execArgv,
-            workerData: clone(workerData, isWorkerThreadsAdapter),
+            workerData: compose(workerData, isWorkerThreadsAdapter),
             stdin,
             stdout,
             stderr
@@ -269,7 +262,7 @@ export namespace go {
                     uid,
                     String(fn),
                     hash(String(fn)),
-                    clone([], useNativeClone)
+                    []
                 ];
 
                 // Add the task.
@@ -330,9 +323,7 @@ async function handleCallResponse(msg: CallResponse) {
     // stack.
     if (task) {
         tasks.delete(uid);
-        useNativeClone || (err = declone(err));
-        useNativeClone || (result = declone(result));
-        err ? task.reject(err) : task.resolve(result);
+        err ? task.reject(decompose(err)) : task.resolve(decompose(result));
     }
 }
 
@@ -370,10 +361,10 @@ async function handleCallRequest(msg: CallRequest, worker?: Worker) {
             }
         }
 
-        useNativeClone || (args = declone(args));
-        response = [uid, null, clone(await fn(...args), useNativeClone)];
+        args = decompose(args);
+        response = [uid, null, compose(await fn(...args), useNativeClone)];
     } catch (err) {
-        response = [uid, clone(err, useNativeClone), null];
+        response = [uid, compose(err, useNativeClone), null];
     }
 
     if (isMainThread && worker) {
