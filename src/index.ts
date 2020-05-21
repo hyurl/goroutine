@@ -276,17 +276,17 @@ export namespace go {
 async function resolveEntryFile(filename?: string): Promise<string> {
     if (filename) {
         return path.resolve(process.cwd(), filename);
-    } else if (process.mainModule) {
-        // If the program is run with an entry file (`process.mainModule`), then
-        // use the mainModule's filename as the entry file, this will guarantee
+    } else if (require.main) {
+        // If the program is run with an entry file (`require.main`), then
+        // use the main-module's filename as the entry file, this will guarantee
         // that the worker thread loads the same resources as the main thread
         // does.
-        return process.mainModule.filename;
+        return require.main.filename;
     } else {
         // However, if the mainModule doesn't exist, AKA. the program runs in a
-        // REPL, then firstly try to resolve with the`index.js` file under the
-        // present working directory, if that file exists.Otherwise, try to
-        // resolve according to the closest`package.json` file.
+        // REPL, then firstly try to resolve with the `index.js` file under the
+        // current working directory, if that file exists.Otherwise, try to
+        // resolve according to the closest `package.json` file.
         let pwd = process.cwd();
         let file = path.resolve(pwd, "index.js");
 
@@ -400,17 +400,19 @@ async function forkWorker(
         let index = pool.indexOf(worker);
         pool.splice(index, 1);
 
-        // If the worker exited unexpected, fork a new worker to replace
+        // If the worker exited unexpectedly, fork a new worker to replace
         // the old one.
-        if (
-            !(code === null && signal === "SIGTERM") &&
-            !(code === 1 && signal === undefined)
-        ) {
+        if (!isNormalExit(adapter, code, signal)) {
             await forkWorker(adapter, filename, options);
         }
     });
 
     return worker;
+}
+
+function isNormalExit(adapter: Adapter, code: number, signal?: NodeJS.Signals) {
+    return (adapter.name === "child_process" && signal === "SIGTERM")
+        || (adapter.name === "worker_threads" && code === 1);
 }
 
 function isCallRequest(msg: any) {

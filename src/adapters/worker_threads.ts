@@ -5,6 +5,7 @@ import { compose } from "@hyurl/structured-clone";
 const nativeErrorCloneSupport = parseFloat(process.versions.v8) >= 7.7;
 
 export default <Adapter>{
+    name: "worker_threads",
     async fork(filename, {
         execArgv = process.execArgv,
         workerData,
@@ -20,6 +21,7 @@ export default <Adapter>{
                 },
                 ...extra
             });
+
             worker.once("message", () => resolve(worker))
                 .once("error", reject);
         });

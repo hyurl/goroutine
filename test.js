@@ -1,4 +1,21 @@
 /* global describe, it, before, after */
+
+let adapter;
+
+try {
+    require.resolve("worker_threads");
+
+    if (process.argv.includes("--child_process"))
+        adapter = "child_process";
+    else
+        adapter = "worker_threads";
+} catch (e) {
+    if (process.argv.includes("--child_process"))
+        return;
+    else
+        adapter = "child_process";
+}
+
 require("source-map-support/register");
 const { go, isMainThread, threadId, workerData } = require(".");
 const fs = require("fs");
@@ -61,12 +78,15 @@ exports.lazyFunc = function lazyFunc() {
 };
 
 if (isMainThread) {
-    describe("Goroutine", () => {
+    describe(`Goroutine: ${adapter}`, () => {
         before(async () => {
             await go.start({
                 filename: __filename,
                 workers: [1, 8],
                 workerData: { foo: "hello", bar: "world", err },
+                adapter: process.argv.includes("--child_process")
+                    ? "child_process"
+                    : void 0 // auto-detect
             });
         });
 

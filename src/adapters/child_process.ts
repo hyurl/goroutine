@@ -17,6 +17,7 @@ async function getDebugFlag() {
 }
 
 export default <Adapter>{
+    name: "child_process",
     async fork(filename, {
         execArgv = process.execArgv,
         workerData,
@@ -49,6 +50,7 @@ export default <Adapter>{
                     "ipc"
                 ]
             });
+
             worker.once("message", () => resolve(worker))
                 .once("error", reject);
         });
