@@ -11,8 +11,9 @@ import ChildProcessAdapter from "./adapters/child_process";
 import parseArgv = require("minimist");
 import { compose, decompose, deserialize } from "@hyurl/structured-clone";
 import orderBy = require("lodash/orderBy");
-export { GoroutineOptions };
+import define from "@hyurl/utils/define";
 
+export { GoroutineOptions };
 
 type CallRequest = [number, number | string, number, any[]];
 type CallResponse = [number, Error, any];
@@ -512,4 +513,5 @@ if (!isMainThread) {
 
 
 export default go;
-global["go"] = go;
+
+define(global, "go", go);
