@@ -2,9 +2,7 @@
 language: node_js
 sudo: false
 before_install:
-  - npm i -D typescript
-before_script:
-  - npx tsc
+  - npm i -g typescript
 node_js:
   - '8.3'
   - '10.0'
